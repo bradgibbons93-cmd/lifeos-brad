@@ -1,0 +1,7 @@
+deploy.sh
+LifeOS-Deploy/
+*.pdf
+generate_master_plan.py
+GMAIL-SETUP-ONE-TIME.md
+.DS_Store
+node_modules/
