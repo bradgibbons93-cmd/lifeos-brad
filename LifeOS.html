@@ -381,19 +381,44 @@ function useSharedLocation() {
    LOGIN SCREEN
 ═══════════════════════════════════════ */
 function LoginScreen({ onLogin }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [name, setName]         = useState('');
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+  const [isReturning, setIsReturning] = useState(false);
 
-  const go = () => {
-    if (!name.trim()) { setError('Please enter your name'); return; }
+  const hashPw = async (em, pw) => {
+    const data = new TextEncoder().encode(em + ':' + pw);
+    const buf  = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  };
+
+  const onEmailChange = e => {
+    const val = e.target.value;
+    setEmail(val); setError('');
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim())) {
+      setIsReturning(!!localStorage.getItem('lifeos_pw:' + val.trim().toLowerCase()));
+    } else { setIsReturning(false); }
+  };
+
+  const go = async () => {
+    if (!name.trim())    { setError('Please enter your name'); return; }
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError('Please enter a valid email'); return;
     }
-    setLoading(true);
-    setError('');
-    setTimeout(() => onLogin({ name: name.trim(), email: email.trim().toLowerCase() }), 800);
+    if (!password.trim()) { setError('Please enter a password'); return; }
+    if (password.length < 4) { setError('Password must be at least 4 characters'); return; }
+    setLoading(true); setError('');
+    const em   = email.trim().toLowerCase();
+    const hash = await hashPw(em, password);
+    const stored = localStorage.getItem('lifeos_pw:' + em);
+    if (stored) {
+      if (stored !== hash) { setLoading(false); setError('Incorrect password — try again'); return; }
+    } else {
+      localStorage.setItem('lifeos_pw:' + em, hash);
+    }
+    setTimeout(() => onLogin({ name: name.trim(), email: em }), 400);
   };
 
   return (
@@ -411,10 +436,10 @@ function LoginScreen({ onLogin }) {
         </div>
 
         <h1 style={{ fontSize:'30px', fontWeight:'800', color:'#0F172A', letterSpacing:'-.5px', marginBottom:'10px' }}>
-          Welcome to LifeOS
+          {isReturning ? 'Welcome back' : 'Welcome to LifeOS'}
         </h1>
         <p style={{ fontSize:'15px', color:'#64748B', lineHeight:'1.6', marginBottom:'32px' }}>
-          Your entire life, beautifully organized.<br/>One place for everything that matters.
+          {isReturning ? 'Enter your password to continue.' : 'Your entire life, beautifully organized.'}
         </p>
 
         <div style={{ textAlign:'left', marginBottom:'16px' }}>
@@ -425,10 +450,20 @@ function LoginScreen({ onLogin }) {
               fontSize:'15px', background:'#F8FAFC' }} />
         </div>
 
-        <div style={{ textAlign:'left', marginBottom:'24px' }}>
+        <div style={{ textAlign:'left', marginBottom:'16px' }}>
           <label style={{ display:'block', fontSize:'13px', fontWeight:'600', color:'#374151', marginBottom:'6px' }}>Email</label>
-          <input value={email} onChange={e => { setEmail(e.target.value); setError(''); }}
+          <input value={email} onChange={onEmailChange}
             placeholder="you@gmail.com" type="email"
+            style={{ width:'100%', padding:'12px 16px', border:'1.5px solid #E2E8F0', borderRadius:'12px',
+              fontSize:'15px', background:'#F8FAFC' }} />
+        </div>
+
+        <div style={{ textAlign:'left', marginBottom:'24px' }}>
+          <label style={{ display:'block', fontSize:'13px', fontWeight:'600', color:'#374151', marginBottom:'6px' }}>
+            {isReturning ? 'Password' : 'Create Password'}
+          </label>
+          <input value={password} onChange={e => { setPassword(e.target.value); setError(''); }}
+            placeholder={isReturning ? '••••••••' : 'Min 4 characters'} type="password"
             onKeyDown={e => e.key === 'Enter' && go()}
             style={{ width:'100%', padding:'12px 16px', border:'1.5px solid #E2E8F0', borderRadius:'12px',
               fontSize:'15px', background:'#F8FAFC' }} />
@@ -441,7 +476,7 @@ function LoginScreen({ onLogin }) {
             ? <><div style={{ width:'18px', height:'18px', border:'2px solid #E2E8F0',
                 borderTopColor:'#6366F1', borderRadius:'50%', animation:'spin .7s linear infinite' }}/>
                 Signing in…</>
-            : <><IcoGoogle />Sign in to LifeOS</>}
+            : <><IcoGoogle />{isReturning ? 'Sign in' : 'Create Account'}</>}
         </button>
 
         <p style={{ marginTop:'28px', fontSize:'12px', color:'#94A3B8', lineHeight:'1.6' }}>
@@ -745,6 +780,10 @@ function Dashboard({ user, onCard, onLogout }) {
   const sharedLoc = useSharedLocation();
   const dashLoc = sharedLoc ? { lat: sharedLoc.lat, lng: sharedLoc.lng, ts: new Date(sharedLoc.ts) } : null;
 
+  // Read real data for dashboard card previews
+  const [cpEvents]   = useLocalStorage('lifeos_cp_events', EVENTS_SEED);
+  const [cpProjects] = useLocalStorage('lifeos_projects', PROJECTS_SEED);
+
   // Record button now saves directly to Voice Journal in localStorage (Bug 1).
   // We still route the user if they spoke something that matches a section keyword,
   // but recordings are persisted regardless so nothing is lost.
@@ -821,31 +860,34 @@ function Dashboard({ user, onCard, onLogout }) {
     })(),
     projects: (
       <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
-        {['Acme Corp', 'TechStart', 'FreeForm Studio'].map((p,i) => (
-          <div key={i} style={{ display:'flex', alignItems:'center', gap:'7px' }}>
-            <div style={{ width:'6px', height:'6px', borderRadius:'50%', background:'#3B82F6' }}/>
-            <span style={{ fontSize:'12px', color:'#374151' }}>{p}</span>
-          </div>
-        ))}
+        {cpProjects.length > 0
+          ? cpProjects.slice(0,3).map((p,i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:'7px' }}>
+                <div style={{ width:'6px', height:'6px', borderRadius:'50%', background:'#3B82F6' }}/>
+                <span style={{ fontSize:'12px', color:'#374151' }}>{p.name || p}</span>
+              </div>
+            ))
+          : <span style={{ fontSize:'12px', color:'#94A3B8' }}>No projects yet — tap to add</span>
+        }
       </div>
     ),
     messages: (
       <div>
-        <p style={{ fontSize:'22px', fontWeight:'800', color:'#0F172A', letterSpacing:'-.5px' }}>
-          4 <span style={{ fontSize:'13px', fontWeight:'400', color:'#94A3B8' }}>unread</span>
-        </p>
-        <p style={{ fontSize:'12px', color:'#64748B', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'160px' }}>
-          Mim: "Can you pick up Lilly…"
+        <p style={{ fontSize:'12px', color:'#94A3B8', lineHeight:'1.5' }}>
+          Open Gmail, Messages &amp; more in one place
         </p>
       </div>
     ),
     calendar: (
       <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
-        {EVENTS_SEED.slice(0,2).map(e => (
-          <div key={e.id} style={{ fontSize:'12px', color:'#374151' }}>
-            {e.icon} {e.title}
-          </div>
-        ))}
+        {cpEvents.length > 0
+          ? cpEvents.slice(0,2).map(e => (
+              <div key={e.id} style={{ fontSize:'12px', color:'#374151' }}>
+                {e.icon} {e.title}
+              </div>
+            ))
+          : <span style={{ fontSize:'12px', color:'#94A3B8' }}>No events yet</span>
+        }
       </div>
     ),
     myLocation: (
@@ -960,28 +1002,23 @@ function Dashboard({ user, onCard, onLogout }) {
 
           <div>
             <p style={{ fontSize:'11px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase', letterSpacing:'1.2px', marginBottom:'14px' }}>TODAY'S SCHEDULE</p>
-            {EVENTS_SEED.slice(0,3).map(e => (
-              <div key={e.id} style={{ display:'flex', alignItems:'flex-start', gap:'10px', marginBottom:'10px' }}>
-                <span style={{ fontSize:'16px' }}>{e.icon}</span>
-                <div>
-                  <p style={{ fontSize:'13px', fontWeight:'600', color:'#374151' }}>{e.title}</p>
-                  <p style={{ fontSize:'11px', color:'#94A3B8' }}>{e.date} · {e.time}</p>
-                </div>
-              </div>
-            ))}
+            {cpEvents.length > 0
+              ? cpEvents.slice(0,3).map(e => (
+                  <div key={e.id} style={{ display:'flex', alignItems:'flex-start', gap:'10px', marginBottom:'10px' }}>
+                    <span style={{ fontSize:'16px' }}>{e.icon}</span>
+                    <div>
+                      <p style={{ fontSize:'13px', fontWeight:'600', color:'#374151' }}>{e.title}</p>
+                      <p style={{ fontSize:'11px', color:'#94A3B8' }}>{e.date} · {e.time}</p>
+                    </div>
+                  </div>
+                ))
+              : <p style={{ fontSize:'13px', color:'#CBD5E1' }}>No events — add them in Co-Parenting</p>
+            }
           </div>
 
           <div>
-            <p style={{ fontSize:'11px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase', letterSpacing:'1.2px', marginBottom:'14px' }}>RECENT MESSAGES</p>
-            {MSGS_SEED.slice(0,3).map(m => (
-              <div key={m.id} style={{ marginBottom:'10px' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'2px' }}>
-                  {!m.read && <div style={{ width:'6px', height:'6px', borderRadius:'50%', background:'#7C3AED' }}/>}
-                  <p style={{ fontSize:'13px', fontWeight:'600', color:'#374151' }}>{m.from}</p>
-                </div>
-                <p style={{ fontSize:'12px', color:'#94A3B8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'240px' }}>{m.text}</p>
-              </div>
-            ))}
+            <p style={{ fontSize:'11px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase', letterSpacing:'1.2px', marginBottom:'14px' }}>MESSAGES</p>
+            <p style={{ fontSize:'13px', color:'#CBD5E1', lineHeight:'1.6' }}>Open Messages to view your conversations</p>
           </div>
 
           <div>
@@ -1480,7 +1517,7 @@ function TabMessages() {
             </div>
             <div style={{ padding:'14px 18px', borderTop:'1px solid #F1F5F9', display:'flex', gap:'10px' }}>
               <input value={reply} onChange={e=>setReply(e.target.value)}
-                placeholder="Reply to Mim…"
+                placeholder={`Reply to ${otherParentName}…`}
                 onKeyDown={e=>e.key==='Enter' && sendReply()}
                 style={{ flex:1, padding:'10px 16px', borderRadius:'12px', border:'1.5px solid #E2E8F0',
                 fontSize:'13px', background:'#FAFAFA' }} />
@@ -1706,12 +1743,12 @@ function TabLocation() {
   // Init map
   useEffect(() => {
     if (!mapRef.current || mapInst.current || !window.L) return;
-    const center = userLoc ? [userLoc.lat, userLoc.lng] : [37.7749, -122.4194];
+    const center = userLoc ? [userLoc.lat, userLoc.lng] : [-38.1499, 144.3617];
     const map = window.L.map(mapRef.current, { zoomControl:true }).setView(center, 13);
     mapInst.current = map;
 
-    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution:'© <a href="https://openstreetmap.org">OpenStreetMap</a>',
+    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution:'© <a href="https://openstreetmap.org">OSM</a> © <a href="https://carto.com">CARTO</a>',
       maxZoom:19,
     }).addTo(map);
 
@@ -1763,7 +1800,7 @@ function TabLocation() {
       who: ciForm.type==='dropoff' ? 'You → Mim' : 'Mim → You',
       location: ciForm.location,
       address: ciForm.location,
-      lat: 37.7749, lng: -122.4194,
+      lat: -38.1499, lng: 144.3617,
       date: 'Apr 1',
       time: now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}),
       kids: ['Lilly','Skylah'],
@@ -3188,13 +3225,13 @@ function PersonalLocationTracker({ user, onBack }) {
     const places = LOCATION_HISTORY[selDate] || [];
     const center = userLoc && selDate === 'Apr 1, 2026'
       ? [userLoc.lat, userLoc.lng]
-      : [places[0]?.lat || 37.7749, places[0]?.lng || -122.4194];
+      : [places[0]?.lat || -38.1499, places[0]?.lng || 144.3617];
 
     const map = window.L.map(mapRef.current, { zoomControl:true }).setView(center, 13);
     mapInst.current = map;
 
-    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution:'© <a href="https://openstreetmap.org">OpenStreetMap</a>', maxZoom:19,
+    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution:'© <a href="https://openstreetmap.org">OSM</a> © <a href="https://carto.com">CARTO</a>', maxZoom:19,
     }).addTo(map);
 
     // Draw path polyline
