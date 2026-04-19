@@ -1271,7 +1271,75 @@ function Dashboard({ user, onCard, onLogout }) {
             ))}
           </div>
         </div>
+
+        {/* ── Backup strip (cross-device workaround) ── */}
+        <BackupStrip />
       </div>
+    </div>
+  );
+}
+
+function BackupStrip() {
+  const mobile = useIsMobile();
+  const fileRef = useRef(null);
+  const [msg, setMsg] = useState('');
+
+  const exportData = () => {
+    try {
+      const data = {};
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith('lifeos_')) data[k] = window.localStorage.getItem(k);
+      }
+      const blob = new Blob([JSON.stringify({ version:1, exportedAt:new Date().toISOString(), data }, null, 2)],
+        { type:'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lifeos-backup-${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      setMsg('Downloaded. AirDrop/email this file to your other device and tap Restore there.');
+      setTimeout(()=>setMsg(''), 6000);
+    } catch(e) { setMsg('Export failed: ' + e.message); }
+  };
+
+  const importData = (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!parsed || !parsed.data) throw new Error('Invalid backup file');
+        if (!window.confirm('Restore backup? This overwrites the data on this device.')) return;
+        Object.entries(parsed.data).forEach(([k, v]) => { if (typeof v === 'string') window.localStorage.setItem(k, v); });
+        setMsg('Restored. Reloading…');
+        setTimeout(()=>window.location.reload(), 800);
+      } catch(e) { setMsg('Import failed: ' + e.message); }
+    };
+    reader.readAsText(f);
+    ev.target.value = '';
+  };
+
+  return (
+    <div className="fade-up" style={{ marginTop:'20px', background:'white', borderRadius:'18px',
+      padding: mobile ? '18px' : '22px 28px', boxShadow:'0 1px 4px rgba(0,0,0,.06)', border:'1px solid #F1F5F9' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems: mobile?'flex-start':'center', gap:'12px', flexDirection: mobile?'column':'row' }}>
+        <div>
+          <p style={{ fontSize:'11px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase', letterSpacing:'1.2px', marginBottom:'4px' }}>DEVICE BACKUP</p>
+          <p style={{ fontSize:'13px', color:'#334155', fontWeight:'600' }}>Move your data between phone &amp; laptop</p>
+          <p style={{ fontSize:'11px', color:'#94A3B8', marginTop:'2px' }}>Your data lives in this browser. Export, then Restore on the other device.</p>
+        </div>
+        <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={exportData} style={{ padding:'10px 14px', borderRadius:'10px', border:'1px solid #E2E8F0',
+            background:'white', color:'#0F172A', fontSize:'12px', fontWeight:'700', cursor:'pointer' }}>⬇ Export</button>
+          <button onClick={()=>fileRef.current && fileRef.current.click()} style={{ padding:'10px 14px', borderRadius:'10px', border:'none',
+            background:'linear-gradient(135deg,#6366F1,#7C3AED)', color:'white', fontSize:'12px', fontWeight:'700', cursor:'pointer' }}>⬆ Restore</button>
+          <input ref={fileRef} type="file" accept="application/json" onChange={importData} style={{ display:'none' }}/>
+        </div>
+      </div>
+      {msg && <p style={{ marginTop:'10px', fontSize:'11px', color:'#6366F1', fontWeight:'600' }}>{msg}</p>}
     </div>
   );
 }
@@ -1293,16 +1361,44 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
   const displayYear = 2026 + Math.floor((baseMonth + monthOffset) / 12);
   const [custodyDays, setCustodyDays] = useLocalStorage('lifeos_custody_apr2026', APR_DAYS_DEFAULT);
   const [dayNotes, setDayNotes] = useLocalStorage('lifeos_day_notes', {});
+  const [scheduleTemplate, setScheduleTemplate] = useLocalStorage('lifeos_schedule_template',
+    { 0:'none', 1:'none', 2:'none', 3:'none', 4:'none', 5:'none', 6:'none' });
+  const [overrides, setOverrides] = useLocalStorage('lifeos_custody_overrides', {});
   const [openDay, setOpenDay] = useState(null); // { d, month, year } or null
   const [noteDraft, setNoteDraft] = useState('');
+  const [showTemplate, setShowTemplate] = useState(false);
+  const [tmplDraft, setTmplDraft] = useState(null);
   const OWNER_CYCLE = ['none','brad','mim','shared'];
   const dayKey = (d, m, y) => `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const dowOf = (d, m, y) => new Date(y, m, d).getDay();
   const cycleCustody = (d) => {
+    const k = dayKey(d, 3, 2026);
+    setOverrides(prev => ({ ...prev, [k]: true }));
     setCustodyDays(prev => prev.map(day => {
       if (day.d !== d) return day;
       const idx = OWNER_CYCLE.indexOf(day.owner);
       return { ...day, owner: OWNER_CYCLE[(idx + 1) % OWNER_CYCLE.length] };
     }));
+  };
+  const resetDayToTemplate = (d, m, y) => {
+    const k = dayKey(d, m, y);
+    setOverrides(prev => { const n = { ...prev }; delete n[k]; return n; });
+    const tmplOwner = scheduleTemplate[dowOf(d, m, y)] || 'none';
+    setCustodyDays(prev => prev.map(day => day.d === d ? { ...day, owner: tmplOwner } : day));
+  };
+  const openTemplate = () => { setTmplDraft({ ...scheduleTemplate }); setShowTemplate(true); };
+  const saveTemplate = () => {
+    if (!tmplDraft) return;
+    setScheduleTemplate(tmplDraft);
+    // Apply to all April days that are NOT overridden
+    setCustodyDays(prev => prev.map(day => {
+      const k = dayKey(day.d, 3, 2026);
+      if (overrides[k]) return day; // keep manual overrides
+      const dow = dowOf(day.d, 3, 2026);
+      return { ...day, owner: tmplDraft[dow] || 'none' };
+    }));
+    setShowTemplate(false);
+    setTmplDraft(null);
   };
   const openDayDetail = (d, m = 3, y = 2026) => {
     const k = dayKey(d, m, y);
@@ -1385,6 +1481,12 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
             </div>
           </div>
           <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
+            <button onClick={openTemplate} title="Set a repeating weekly schedule"
+              style={{ padding:'6px 10px', borderRadius:'8px', border:'1px solid #E2E8F0',
+                background:'linear-gradient(135deg,#6366F1,#7C3AED)', color:'white',
+                cursor:'pointer', fontSize:'11px', fontWeight:'700', whiteSpace:'nowrap' }}>
+              🔁 Schedule
+            </button>
             {/* Weekly / Monthly view toggle (Bug 2) */}
             <div style={{ display:'flex', background:'#F1F5F9', borderRadius:'8px', padding:'2px' }}>
               {[{id:'month',label:'Month'},{id:'week',label:'Week'}].map(v => (
@@ -1416,14 +1518,17 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
               <>
                 {[...Array(APR_START_DOW)].map((_,i) => <div key={`e${i}`} className="cal-day empty"/>)}
                 {custodyDays.map(({ d, owner }) => {
-                  const hasNote = !!dayNotes[dayKey(d, 3, 2026)];
+                  const k = dayKey(d, 3, 2026);
+                  const hasNote = !!dayNotes[k];
+                  const isOverride = !!overrides[k];
                   return (
                     <div key={d} className={`cal-day ${owner} ${d===today?'today':''}`}
                       onClick={() => openDayDetail(d, 3, 2026)}
-                      title="Tap to set custody / add a note"
+                      title={isOverride ? "Custom day — differs from your schedule" : "Tap to set custody / add a note"}
                       style={{ border: sel===d ? '2px solid #6366F1' : '2px solid transparent', cursor:'pointer', position:'relative' }}>
                       {d}
                       {hasNote && <span style={{ position:'absolute', top:'3px', right:'4px', fontSize:'9px' }}>📝</span>}
+                      {isOverride && <span title="Overrides schedule" style={{ position:'absolute', bottom:'3px', right:'4px', width:'7px', height:'7px', borderRadius:'50%', background:'#F59E0B', boxShadow:'0 0 0 2px white' }}/>}
                     </div>
                   );
                 })}
@@ -1445,12 +1550,14 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
                 const isApr = d.getMonth() === 3 && d.getFullYear() === 2026;
                 const owner = isApr ? (custodyDays.find(x => x.d === dayNum)?.owner || 'none') : 'none';
                 const isToday = dayNum === today && isApr;
-                const hasNote = isApr && !!dayNotes[dayKey(dayNum, 3, 2026)];
+                const k = isApr ? dayKey(dayNum, 3, 2026) : '';
+                const hasNote = isApr && !!dayNotes[k];
+                const isOverride = isApr && !!overrides[k];
                 return (
                   <div key={i}
                     className={`cal-day ${owner} ${isToday ? 'today' : ''}`}
                     onClick={() => isApr && openDayDetail(dayNum, 3, 2026)}
-                    title={isApr ? 'Tap to set custody / add a note' : ''}
+                    title={isApr ? (isOverride ? 'Custom day — differs from schedule' : 'Tap to set custody / add a note') : ''}
                     style={{ border: '2px solid transparent', cursor: isApr ? 'pointer' : 'default',
                       display:'flex', flexDirection:'column', gap:'2px', aspectRatio:'unset', padding:'8px 4px', minHeight:'52px', position:'relative' }}>
                     <span style={{ fontSize:'10px', fontWeight:'700', opacity:.6 }}>
@@ -1458,6 +1565,7 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
                     </span>
                     <span>{dayNum}</span>
                     {hasNote && <span style={{ position:'absolute', top:'3px', right:'4px', fontSize:'9px' }}>📝</span>}
+                    {isOverride && <span title="Overrides schedule" style={{ position:'absolute', bottom:'3px', right:'4px', width:'7px', height:'7px', borderRadius:'50%', background:'#F59E0B', boxShadow:'0 0 0 2px white' }}/>}
                   </div>
                 );
               })}
@@ -1579,7 +1687,7 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
               </div>
 
               <p style={{ fontSize:'12px', fontWeight:'700', color:'#64748B', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.5px' }}>Scheduled</p>
-              <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'18px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px' }}>
                 <div style={{ flex:1, padding:'12px 16px', borderRadius:'12px',
                   background: OWNER_COLOR[dayObj.owner] + '18', border:`1px solid ${OWNER_COLOR[dayObj.owner]}33`,
                   color: OWNER_COLOR[dayObj.owner], fontSize:'14px', fontWeight:'700' }}>
@@ -1591,6 +1699,23 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
                   Cycle →
                 </button>
               </div>
+              {overrides[openDay.key] && (
+                <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'18px',
+                  padding:'8px 12px', borderRadius:'10px', background:'#FFFBEB', border:'1px solid #FDE68A' }}>
+                  <span style={{ width:'8px', height:'8px', borderRadius:'50%', background:'#F59E0B' }}/>
+                  <span style={{ fontSize:'11px', color:'#92400E', flex:1 }}>This day overrides your schedule</span>
+                  <button onClick={() => resetDayToTemplate(openDay.d, openDay.month, openDay.year)}
+                    style={{ background:'white', border:'1px solid #FDE68A', color:'#92400E',
+                      borderRadius:'8px', padding:'4px 10px', fontSize:'11px', fontWeight:'700', cursor:'pointer' }}>
+                    Reset to schedule
+                  </button>
+                </div>
+              )}
+              {!overrides[openDay.key] && scheduleTemplate[dowOf(openDay.d, openDay.month, openDay.year)] !== 'none' && (
+                <p style={{ fontSize:'11px', color:'#94A3B8', marginBottom:'18px' }}>
+                  Following your weekly schedule. Tap Cycle to override just this day.
+                </p>
+              )}
 
               <p style={{ fontSize:'12px', fontWeight:'700', color:'#64748B', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.5px' }}>Notes for this day</p>
               <textarea value={noteDraft} onChange={e => setNoteDraft(e.target.value)}
@@ -1613,6 +1738,59 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
           </div>
         );
       })()}
+
+      {/* Weekly schedule template modal */}
+      {showTemplate && tmplDraft && (
+        <div onClick={() => { setShowTemplate(false); setTmplDraft(null); }}
+          style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.5)', zIndex:1000,
+            display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
+          <div onClick={e => e.stopPropagation()} className="fade-up"
+            style={{ background:'white', borderRadius:'20px', padding:'26px', maxWidth:'460px',
+              width:'100%', boxShadow:'0 24px 60px rgba(0,0,0,.25)' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'8px' }}>
+              <div>
+                <p style={{ fontSize:'11px', fontWeight:'700', color:'#94A3B8', letterSpacing:'1px', textTransform:'uppercase' }}>Recurring Schedule</p>
+                <h3 style={{ fontSize:'22px', fontWeight:'800', color:'#0F172A', letterSpacing:'-.3px' }}>Set Weekly Pattern</h3>
+              </div>
+              <button onClick={() => { setShowTemplate(false); setTmplDraft(null); }}
+                style={{ background:'#F1F5F9', border:'none', width:'30px', height:'30px', borderRadius:'50%', fontSize:'16px', cursor:'pointer', color:'#64748B' }}>×</button>
+            </div>
+            <p style={{ fontSize:'12px', color:'#64748B', marginBottom:'18px' }}>
+              Pick who each weekday belongs to. This applies to every week automatically. You can still tap any day to override it.
+            </p>
+            <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'18px' }}>
+              {[
+                {dow:0,name:'Sunday'},{dow:1,name:'Monday'},{dow:2,name:'Tuesday'},{dow:3,name:'Wednesday'},
+                {dow:4,name:'Thursday'},{dow:5,name:'Friday'},{dow:6,name:'Saturday'},
+              ].map(({dow, name}) => (
+                <div key={dow} style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                  <span style={{ width:'90px', fontSize:'13px', fontWeight:'600', color:'#334155' }}>{name}</span>
+                  <select value={tmplDraft[dow]} onChange={e => setTmplDraft(prev => ({...prev, [dow]: e.target.value}))}
+                    style={{ flex:1, padding:'8px 10px', borderRadius:'10px', border:'1.5px solid #E2E8F0',
+                      fontSize:'13px', fontFamily:'Inter,sans-serif', background:'white', cursor:'pointer', outline:'none' }}>
+                    <option value="none">— Not set —</option>
+                    <option value="brad">With you (Brad)</option>
+                    <option value="mim">With {otherParentName}</option>
+                    <option value="shared">Split (1 kid each)</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize:'11px', color:'#94A3B8', background:'#F8FAFC', padding:'10px 12px', borderRadius:'10px', marginBottom:'14px' }}>
+              Saving will fill in every day of April that you haven't manually changed. Your {Object.keys(overrides).length} custom day{Object.keys(overrides).length===1?'':'s'} will stay.
+            </div>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button onClick={() => { setShowTemplate(false); setTmplDraft(null); }}
+                style={{ flex:1, padding:'11px', borderRadius:'11px', border:'1px solid #E2E8F0',
+                  background:'white', cursor:'pointer', fontSize:'13px', fontWeight:'500' }}>Cancel</button>
+              <button onClick={saveTemplate}
+                style={{ flex:2, padding:'11px', borderRadius:'11px', border:'none',
+                  background:'linear-gradient(135deg,#6366F1,#7C3AED)', color:'white',
+                  cursor:'pointer', fontSize:'13px', fontWeight:'700' }}>Apply schedule</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
