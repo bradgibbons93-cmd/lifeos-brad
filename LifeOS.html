@@ -131,8 +131,7 @@ const CARDS_DEF = [
   { id:'messages',    label:'Unified Messages',    icon:'💬',    color:'#DB2777', bg:'#FDF2F8', desc:'All your messages' },
   { id:'journal',     label:'Voice Journal',       icon:'🎙️',   color:'#4F46E5', bg:'#EEF2FF', desc:'Record your thoughts' },
   { id:'ai',          label:'AI Assistant',        icon:'✨',    color:'#0D9488', bg:'#F0FDFA', desc:'Ask me anything' },
-  { id:'myLocation',  label:'My Location',         icon:'🗺️',   color:'#DC2626', bg:'#FEF2F2', desc:'Where have I been?' },
-  { id:'liveLocation',label:'📍 Location',          icon:'📍',   color:'#6366F1', bg:'#EEF2FF', desc:'Live GPS tracking' },
+  { id:'liveLocation',label:'Location',            icon:'📍',   color:'#6366F1', bg:'#EEF2FF', desc:'Live GPS — you & the kids' },
 ];
 
 const EXPENSES_SEED = [];
@@ -149,7 +148,6 @@ const REMINDERS_SEED = [];
 
 const FAMILY_LOCS_SEED = [
   { id:'brad',   name:'You',    emoji:'🧑', color:'#6366F1', status:'GPS active', lastSeen:'now',    lat:0, lng:0, sharing:true  },
-  { id:'mim',    name:'Mim',    emoji:'👩', color:'#DB2777', status:'',           lastSeen:'',       lat:0, lng:0, sharing:false },
   { id:'lilly',  name:'Lilly',  emoji:'👧', color:'#F59E0B', status:'',           lastSeen:'',       lat:0, lng:0, sharing:true  },
   { id:'skylah', name:'Skylah', emoji:'👧', color:'#10B981', status:'',           lastSeen:'',       lat:0, lng:0, sharing:true  },
 ];
@@ -471,12 +469,20 @@ function LoginScreen({ onLogin }) {
 
         {error && <p style={{ color:'#EF4444', fontSize:'13px', marginBottom:'16px', fontWeight:'500' }}>{error}</p>}
 
-        <button className="g-btn" onClick={go} disabled={loading}>
+        <button onClick={go} disabled={loading} style={{
+          display:'flex', alignItems:'center', justifyContent:'center', gap:'10px',
+          width:'100%', padding:'14px 24px', border:'none', borderRadius:'14px',
+          background: loading ? '#CBD5E1' : 'linear-gradient(135deg,#6366F1,#8B5CF6)',
+          color:'white', cursor: loading ? 'not-allowed' : 'pointer',
+          fontFamily:'Inter,sans-serif', fontSize:'15px', fontWeight:'700',
+          boxShadow: loading ? 'none' : '0 8px 24px rgba(99,102,241,.35)',
+          transition:'all .2s',
+        }}>
           {loading
-            ? <><div style={{ width:'18px', height:'18px', border:'2px solid #E2E8F0',
-                borderTopColor:'#6366F1', borderRadius:'50%', animation:'spin .7s linear infinite' }}/>
+            ? <><div style={{ width:'18px', height:'18px', border:'2px solid rgba(255,255,255,.3)',
+                borderTopColor:'white', borderRadius:'50%', animation:'spin .7s linear infinite' }}/>
                 Signing in…</>
-            : <><IcoGoogle />{isReturning ? 'Sign in' : 'Create Account'}</>}
+            : <>🔒 {isReturning ? 'Sign in' : 'Create Account'}</>}
         </button>
 
         <p style={{ marginTop:'28px', fontSize:'12px', color:'#94A3B8', lineHeight:'1.6' }}>
@@ -497,55 +503,117 @@ function RecordButton({ onRoute }) {
   const [rec, setRec] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [saved, setSaved]   = useState(false);
+  const [savedLabel, setSavedLabel] = useState('');
+  const [picker, setPicker] = useState(null); // text awaiting destination choice
   const srRef = useRef(null);
   const demoRef = useRef(null);
   // Ref to hold latest transcript so onend closure can read current value
   const transcriptRef = useRef('');
 
-  const saveToJournal = useCallback((text) => {
-    if (!text || !text.trim()) return;
+  const scopedKey = (base) => {
     try {
-      // Determine scoped key the same way useLocalStorage does
-      let journalKey = 'lifeos_journal';
       const rawUser = window.localStorage.getItem('lifeos_user');
       if (rawUser && rawUser !== 'null') {
         const u = JSON.parse(rawUser);
-        if (u && u.email) journalKey = 'lifeos_journal:' + u.email;
+        if (u && u.email) return base + ':' + u.email;
       }
-      const now = new Date();
-      const entry = {
-        id: Date.now(),
-        date: now.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }),
-        time: now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }),
-        mood: '😊', moodLabel: 'Good', duration: '0:30',
-        title: text.slice(0, 50) + (text.length > 50 ? '…' : ''),
-        transcript: text,
-        tags: ['voice'],
-      };
-      const existing = window.localStorage.getItem(journalKey);
+    } catch(_){}
+    return base;
+  };
+
+  const pushTo = (key, item, prepend = true) => {
+    try {
+      const k = scopedKey(key);
+      const existing = window.localStorage.getItem(k);
       const arr = existing ? JSON.parse(existing) : [];
-      arr.unshift(entry);
-      window.localStorage.setItem(journalKey, JSON.stringify(arr));
-      // Also store as pending so Voice Journal highlights it if user navigates there
-      window.localStorage.setItem('lifeos_pending_voice', JSON.stringify({ text, ts: now.toISOString() }));
+      if (prepend) arr.unshift(item); else arr.push(item);
+      window.localStorage.setItem(k, JSON.stringify(arr));
     } catch(e) { console.error(e); }
+  };
+
+  const saveToJournal = useCallback((text) => {
+    if (!text || !text.trim()) return;
+    const now = new Date();
+    pushTo('lifeos_journal', {
+      id: Date.now(),
+      date: now.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }),
+      time: now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }),
+      mood: '😊', moodLabel: 'Good', duration: '0:30',
+      title: text.slice(0, 50) + (text.length > 50 ? '…' : ''),
+      transcript: text,
+      tags: ['voice'],
+    });
+    try { window.localStorage.setItem('lifeos_pending_voice', JSON.stringify({ text, ts: now.toISOString() })); } catch(_){}
   }, []);
+
+  const saveToCoParent = useCallback((text) => {
+    if (!text || !text.trim()) return;
+    const now = new Date();
+    pushTo('lifeos_cp_thread', {
+      id: Date.now(),
+      from: 'me',
+      text: text.trim(),
+      time: now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }),
+      date: now.toLocaleDateString('en-US', { month:'short', day:'numeric' }),
+      ts: now.toISOString(),
+      voice: true,
+    }, false);
+  }, []);
+
+  const saveToCalendar = useCallback((text) => {
+    if (!text || !text.trim()) return;
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    pushTo('lifeos_cp_events', {
+      id: Date.now(),
+      title: text.slice(0, 80) + (text.length > 80 ? '…' : ''),
+      date: `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`,
+      time: '',
+      owner: 'brad',
+      icon: '🎙️',
+      voice: true,
+    }, false);
+  }, []);
+
+  const saveToTasks = useCallback((text) => {
+    if (!text || !text.trim()) return;
+    pushTo('lifeos_tasks', {
+      id: Date.now(),
+      text: text.trim(),
+      urgency: 'normal',
+      done: false,
+      created: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'}),
+      voice: true,
+    }, false);
+  }, []);
+
+  const routeTo = useCallback((dest) => {
+    const text = picker;
+    setPicker(null);
+    if (!text || dest === 'discard') { setTranscript(''); return; }
+    let label = '';
+    if (dest === 'journal')    { saveToJournal(text);    label = 'Saved to Voice Journal'; }
+    if (dest === 'coparent')   { saveToCoParent(text);   label = 'Logged in Co-parenting'; }
+    if (dest === 'calendar')   { saveToCalendar(text);   label = 'Added to Calendar'; }
+    if (dest === 'task')       { saveToTasks(text);      label = 'Added as Task'; }
+    setSaved(true);
+    setSavedLabel(label);
+    onRoute && onRoute(text, { id: dest });
+    setTimeout(() => { setTranscript(''); setSaved(false); setSavedLabel(''); }, 3200);
+  }, [picker, saveToJournal, saveToCoParent, saveToCalendar, saveToTasks, onRoute]);
 
   const stop = useCallback((text) => {
     setRec(false);
     if (srRef.current) { try { srRef.current.stop(); } catch(_){} }
     clearInterval(demoRef.current);
     if (text && text.trim()) {
-      saveToJournal(text);
-      setSaved(true);
-      onRoute && onRoute(text, routeVoice(text));
-      setTimeout(() => { setTranscript(''); setSaved(false); }, 3200);
+      setPicker(text.trim());
     }
-  }, [onRoute, saveToJournal]);
+  }, []);
 
   const toggle = useCallback(() => {
     if (rec) { stop(transcript); return; }
-    setTranscript(''); setSaved(false); setRec(true); transcriptRef.current = '';
+    setTranscript(''); setSaved(false); setSavedLabel(''); setPicker(null); setRec(true); transcriptRef.current = '';
 
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SR) {
@@ -569,24 +637,49 @@ function RecordButton({ onRoute }) {
     }
   }, [rec, transcript, stop]);
 
+  const DEST_BTNS = [
+    { id:'journal',  label:'🎙️ Voice Journal',   bg:'#EEF2FF', color:'#4F46E5' },
+    { id:'coparent', label:'👨‍👧‍👦 Co-parenting log', bg:'#FFF7ED', color:'#EA580C' },
+    { id:'calendar', label:'📅 Add to Calendar',   bg:'#ECFDF5', color:'#059669' },
+    { id:'task',     label:'✅ Add as Task',       bg:'#FEF3C7', color:'#B45309' },
+    { id:'discard',  label:'🗑️ Discard',          bg:'#F1F5F9', color:'#64748B' },
+  ];
+
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'18px' }}>
 
       {/* Transcript / saved pill */}
-      {(transcript || saved) && (
+      {(transcript || saved || picker) && (
         <div className="fade-up" style={{ background:'white', border:'1px solid #E2E8F0',
           borderRadius:'18px', padding:'14px 22px', maxWidth:'500px', width:'100%',
           boxShadow:'0 4px 20px rgba(0,0,0,.07)', textAlign:'left' }}>
-          {transcript && (
-            <p style={{ fontSize:'14px', color:'#374151', marginBottom: saved ? '10px' : 0, lineHeight:'1.5' }}>
-              "{transcript}"
+          {(picker || transcript) && (
+            <p style={{ fontSize:'14px', color:'#374151', marginBottom: (saved || picker) ? '12px' : 0, lineHeight:'1.5' }}>
+              "{picker || transcript}"
             </p>
+          )}
+          {picker && (
+            <div>
+              <p style={{ fontSize:'12px', color:'#64748B', fontWeight:'600', marginBottom:'10px' }}>
+                Where should this go?
+              </p>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:'8px' }}>
+                {DEST_BTNS.map(b => (
+                  <button key={b.id} onClick={() => routeTo(b.id)}
+                    style={{ padding:'8px 14px', borderRadius:'100px', border:'none',
+                      background:b.bg, color:b.color, fontSize:'12px', fontWeight:'700',
+                      cursor:'pointer' }}>
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
           {saved && (
             <div style={{ display:'flex', alignItems:'center', gap:'7px' }}>
               <div style={{ width:'7px', height:'7px', borderRadius:'50%', background:'#10B981' }}/>
               <span style={{ fontSize:'12px', color:'#10B981', fontWeight:'600' }}>
-                Saved to Voice Journal
+                {savedLabel || 'Saved'}
               </span>
             </div>
           )}
@@ -768,11 +861,150 @@ function DashCard({ card, idx, draggingIdx, overIdx, onDragStart, onDragOver, on
 }
 
 /* ═══════════════════════════════════════
+   WEEKLY RECAP WIDGET
+═══════════════════════════════════════ */
+function WeeklyRecap() {
+  const mobile = useIsMobile();
+  const [open, setOpen] = useState(false);
+  const [tasks]    = useLocalStorage('lifeos_tasks', []);
+  const [events]   = useLocalStorage('lifeos_cp_events', EVENTS_SEED);
+  const [custody]  = useLocalStorage('lifeos_custody_apr2026', APR_DAYS_DEFAULT);
+  const [journal]  = useLocalStorage('lifeos_journal', []);
+
+  const now = new Date();
+  const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7);
+  const nextWeek = new Date(now); nextWeek.setDate(now.getDate() + 7);
+
+  // Tasks
+  const pendingTasks  = tasks.filter(t => !t.done);
+  const urgentTasks   = pendingTasks.filter(t => t.urgency === 'urgent');
+  const completedThis = tasks.filter(t => t.done).length;
+
+  // Events this week (date stored as YYYY-MM-DD from new entries, or 'Apr 17' from seed)
+  const upcomingEvents = events.filter(ev => {
+    if (!ev.date) return false;
+    // Parse YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ev.date)) {
+      const d = new Date(ev.date + 'T00:00:00');
+      return d >= now && d <= nextWeek;
+    }
+    return false;
+  });
+
+  // Custody: days with Brad this week
+  const todayD = now.getDate();
+  const weekDays = [0,1,2,3,4,5,6].map(i => {
+    const d = new Date(now); d.setDate(now.getDate() - now.getDay() + i);
+    return d.getDate();
+  });
+  const bradDaysThisWeek = custody.filter(c => weekDays.includes(c.d) && c.owner === 'brad').length;
+  const mimDaysThisWeek  = custody.filter(c => weekDays.includes(c.d) && c.owner === 'mim').length;
+
+  // Journal entries this week
+  const journalThisWeek = journal.filter(e => {
+    try { const d = new Date(e.date); return d >= weekAgo && d <= now; } catch(_){ return false; }
+  }).length;
+
+  const STATS = [
+    { label:'Kids with you', value: bradDaysThisWeek, unit:'days', emoji:'👨‍👧‍👦', color:'#6366F1', bg:'#EEF2FF' },
+    { label:'Pending tasks', value: pendingTasks.length, unit: urgentTasks.length > 0 ? `(${urgentTasks.length} urgent)` : '', emoji:'✅', color: urgentTasks.length ? '#DC2626' : '#10B981', bg: urgentTasks.length ? '#FEF2F2' : '#ECFDF5' },
+    { label:'Upcoming events', value: upcomingEvents.length, unit:'next 7 days', emoji:'📅', color:'#F59E0B', bg:'#FFFBEB' },
+    { label:'Voice entries', value: journalThisWeek, unit:'this week', emoji:'🎙️', color:'#8B5CF6', bg:'#F5F3FF' },
+  ];
+
+  return (
+    <div className="fade-up" style={{ background:'white', borderRadius:'20px', border:'1px solid #F1F5F9',
+      boxShadow:'0 1px 4px rgba(0,0,0,.06)', marginBottom:'28px', overflow:'hidden' }}>
+
+      {/* Header — always visible */}
+      <div onClick={() => setOpen(o => !o)}
+        style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+          padding: mobile ? '16px' : '20px 24px', cursor:'pointer' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+          <span style={{ fontSize:'20px' }}>📊</span>
+          <div>
+            <h2 style={{ fontSize:'15px', fontWeight:'800', color:'#0F172A', margin:0 }}>Weekly Recap</h2>
+            <p style={{ fontSize:'12px', color:'#94A3B8', margin:'2px 0 0' }}>
+              {urgentTasks.length > 0 ? `${urgentTasks.length} urgent task${urgentTasks.length>1?'s':''} need attention` : 'You\'re on track 👍'}
+            </p>
+          </div>
+        </div>
+        <span style={{ fontSize:'18px', color:'#CBD5E1', transition:'transform .2s', display:'inline-block',
+          transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>›</span>
+      </div>
+
+      {/* Expandable body */}
+      {open && (
+        <div style={{ padding: mobile ? '0 16px 16px' : '0 24px 20px', borderTop:'1px solid #F1F5F9' }}>
+          {/* Stats row */}
+          <div style={{ display:'grid', gridTemplateColumns: mobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap:'10px', marginTop:'16px', marginBottom:'16px' }}>
+            {STATS.map(s => (
+              <div key={s.label} style={{ background:s.bg, borderRadius:'14px', padding:'14px 12px', textAlign:'center' }}>
+                <div style={{ fontSize:'22px', marginBottom:'4px' }}>{s.emoji}</div>
+                <div style={{ fontSize:'22px', fontWeight:'900', color:s.color, lineHeight:1 }}>{s.value}</div>
+                <div style={{ fontSize:'10px', fontWeight:'600', color:s.color, opacity:.8, marginTop:'2px' }}>{s.unit || '\u00A0'}</div>
+                <div style={{ fontSize:'10px', color:'#64748B', marginTop:'4px' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Upcoming events list */}
+          {upcomingEvents.length > 0 && (
+            <div>
+              <p style={{ fontSize:'12px', fontWeight:'700', color:'#64748B', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.5px' }}>Coming Up</p>
+              {upcomingEvents.slice(0, 4).map(ev => (
+                <div key={ev.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'8px 0', borderBottom:'1px solid #F8FAFC' }}>
+                  <span style={{ fontSize:'16px' }}>{ev.icon || '📅'}</span>
+                  <div style={{ flex:1 }}>
+                    <p style={{ fontSize:'13px', fontWeight:'600', color:'#0F172A', margin:0 }}>{ev.title}</p>
+                    <p style={{ fontSize:'11px', color:'#94A3B8', margin:0 }}>{ev.date}{ev.time ? ' · ' + ev.time : ''}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Custody summary */}
+          <div style={{ marginTop:'14px', padding:'12px', background:'#F8FAFC', borderRadius:'12px', display:'flex', gap:'16px' }}>
+            <div style={{ textAlign:'center', flex:1 }}>
+              <p style={{ fontSize:'20px', fontWeight:'900', color:'#6366F1', margin:0 }}>{bradDaysThisWeek}</p>
+              <p style={{ fontSize:'11px', color:'#64748B', margin:'2px 0 0' }}>days with you</p>
+            </div>
+            <div style={{ width:'1px', background:'#E2E8F0' }}/>
+            <div style={{ textAlign:'center', flex:1 }}>
+              <p style={{ fontSize:'20px', fontWeight:'900', color:'#F59E0B', margin:0 }}>{mimDaysThisWeek}</p>
+              <p style={{ fontSize:'11px', color:'#64748B', margin:'2px 0 0' }}>days with Mim</p>
+            </div>
+            <div style={{ width:'1px', background:'#E2E8F0' }}/>
+            <div style={{ textAlign:'center', flex:1 }}>
+              <p style={{ fontSize:'20px', fontWeight:'900', color:'#10B981', margin:0 }}>{completedThis}</p>
+              <p style={{ fontSize:'11px', color:'#64748B', margin:'2px 0 0' }}>tasks done</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
    DASHBOARD
 ═══════════════════════════════════════ */
 function Dashboard({ user, onCard, onLogout }) {
   const mobile = useIsMobile();
-  const [cards, setCards]         = useState(CARDS_DEF);
+  // Persist card order per user, reconcile against the current CARDS_DEF so
+  // stale/removed card IDs are dropped and new ones are appended.
+  const [savedOrder, setSavedOrder] = useLocalStorage('lifeos_card_order', CARDS_DEF.map(c=>c.id));
+  const cards = useMemo(() => {
+    const byId = Object.fromEntries(CARDS_DEF.map(c=>[c.id,c]));
+    const ordered = savedOrder.map(id => byId[id]).filter(Boolean);
+    const missing = CARDS_DEF.filter(c => !savedOrder.includes(c.id));
+    return [...ordered, ...missing];
+  }, [savedOrder]);
+  const setCards = (updater) => {
+    const next = typeof updater === 'function' ? updater(cards) : updater;
+    setSavedOrder(next.map(c=>c.id));
+  };
   const [draggingIdx, setDragging] = useState(null);
   const [overIdx, setOver]         = useState(null);
 
@@ -784,15 +1016,13 @@ function Dashboard({ user, onCard, onLogout }) {
   const [cpEvents]   = useLocalStorage('lifeos_cp_events', EVENTS_SEED);
   const [cpProjects] = useLocalStorage('lifeos_projects', PROJECTS_SEED);
 
-  // Record button now saves directly to Voice Journal in localStorage (Bug 1).
-  // We still route the user if they spoke something that matches a section keyword,
-  // but recordings are persisted regardless so nothing is lost.
+  // Record button asks user where to save after each recording. If they picked
+  // a destination that corresponds to a section, take them there so they can see it.
   const handleVoiceRoute = useCallback((text, dest) => {
-    // Recording is already saved by RecordButton — just optionally navigate
-    // Only navigate if the destination is NOT the journal (journal is already saved)
-    if (dest && dest.id && dest.id !== 'journal') {
-      onCard(dest.id);
-    }
+    if (!dest || !dest.id) return;
+    const map = { coparent: 'coparenting', calendar: 'calendar' };
+    const target = map[dest.id];
+    if (target) onCard(target);
   }, [onCard]);
 
   const handleDragStart = (i)  => setDragging(i);
@@ -967,6 +1197,9 @@ function Dashboard({ user, onCard, onLogout }) {
           return null;
         })()}
 
+        {/* ── Weekly Recap ── */}
+        <WeeklyRecap />
+
         {/* ── Today's Tasks ── */}
         <TasksWidget onCard={onCard} />
 
@@ -1059,13 +1292,32 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
   const displayMonth = MONTHS[(baseMonth + monthOffset + 12) % 12];
   const displayYear = 2026 + Math.floor((baseMonth + monthOffset) / 12);
   const [custodyDays, setCustodyDays] = useLocalStorage('lifeos_custody_apr2026', APR_DAYS_DEFAULT);
+  const [dayNotes, setDayNotes] = useLocalStorage('lifeos_day_notes', {});
+  const [openDay, setOpenDay] = useState(null); // { d, month, year } or null
+  const [noteDraft, setNoteDraft] = useState('');
   const OWNER_CYCLE = ['none','brad','mim','shared'];
+  const dayKey = (d, m, y) => `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
   const cycleCustody = (d) => {
     setCustodyDays(prev => prev.map(day => {
       if (day.d !== d) return day;
       const idx = OWNER_CYCLE.indexOf(day.owner);
       return { ...day, owner: OWNER_CYCLE[(idx + 1) % OWNER_CYCLE.length] };
     }));
+  };
+  const openDayDetail = (d, m = 3, y = 2026) => {
+    const k = dayKey(d, m, y);
+    setNoteDraft(dayNotes[k] || '');
+    setOpenDay({ d, month: m, year: y, key: k });
+  };
+  const saveDayNote = () => {
+    if (!openDay) return;
+    setDayNotes(prev => {
+      const next = { ...prev };
+      if (noteDraft.trim()) next[openDay.key] = noteDraft.trim();
+      else delete next[openDay.key];
+      return next;
+    });
+    setOpenDay(null); setNoteDraft('');
   };
   const bradDays = custodyDays.filter(d=>d.owner==='brad').length;
   const mimDays = custodyDays.filter(d=>d.owner==='mim').length;
@@ -1163,14 +1415,18 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
             {monthOffset === 0 ? (
               <>
                 {[...Array(APR_START_DOW)].map((_,i) => <div key={`e${i}`} className="cal-day empty"/>)}
-                {custodyDays.map(({ d, owner }) => (
-                  <div key={d} className={`cal-day ${owner} ${d===today?'today':''}`}
-                    onClick={() => cycleCustody(d)}
-                    title="Click to change custody"
-                    style={{ border: sel===d ? '2px solid #6366F1' : '2px solid transparent', cursor:'pointer' }}>
-                    {d}
-                  </div>
-                ))}
+                {custodyDays.map(({ d, owner }) => {
+                  const hasNote = !!dayNotes[dayKey(d, 3, 2026)];
+                  return (
+                    <div key={d} className={`cal-day ${owner} ${d===today?'today':''}`}
+                      onClick={() => openDayDetail(d, 3, 2026)}
+                      title="Tap to set custody / add a note"
+                      style={{ border: sel===d ? '2px solid #6366F1' : '2px solid transparent', cursor:'pointer', position:'relative' }}>
+                      {d}
+                      {hasNote && <span style={{ position:'absolute', top:'3px', right:'4px', fontSize:'9px' }}>📝</span>}
+                    </div>
+                  );
+                })}
               </>
             ) : (
               Array.from({length:30},(_,i)=>(
@@ -1189,17 +1445,19 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
                 const isApr = d.getMonth() === 3 && d.getFullYear() === 2026;
                 const owner = isApr ? (custodyDays.find(x => x.d === dayNum)?.owner || 'none') : 'none';
                 const isToday = dayNum === today && isApr;
+                const hasNote = isApr && !!dayNotes[dayKey(dayNum, 3, 2026)];
                 return (
                   <div key={i}
                     className={`cal-day ${owner} ${isToday ? 'today' : ''}`}
-                    onClick={() => isApr && cycleCustody(dayNum)}
-                    title={isApr ? 'Click to change custody' : ''}
+                    onClick={() => isApr && openDayDetail(dayNum, 3, 2026)}
+                    title={isApr ? 'Tap to set custody / add a note' : ''}
                     style={{ border: '2px solid transparent', cursor: isApr ? 'pointer' : 'default',
-                      flexDirection:'column', gap:'2px', aspectRatio:'unset', padding:'8px 4px', minHeight:'52px' }}>
+                      display:'flex', flexDirection:'column', gap:'2px', aspectRatio:'unset', padding:'8px 4px', minHeight:'52px', position:'relative' }}>
                     <span style={{ fontSize:'10px', fontWeight:'700', opacity:.6 }}>
                       {['Su','Mo','Tu','We','Th','Fr','Sa'][d.getDay()]}
                     </span>
                     <span>{dayNum}</span>
+                    {hasNote && <span style={{ position:'absolute', top:'3px', right:'4px', fontSize:'9px' }}>📝</span>}
                   </div>
                 );
               })}
@@ -1294,6 +1552,67 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
           ))}
         </div>
       </div>
+
+      {/* Day detail modal — tap any day to set custody + add a note */}
+      {openDay && (() => {
+        const dayObj = custodyDays.find(x => x.d === openDay.d) || { d: openDay.d, owner: 'none' };
+        const OWNER_LABEL = { none:'Not set', brad:'With you', mim:`With ${otherParentName}`, shared:'Split (1 kid each)' };
+        const OWNER_COLOR = { none:'#94A3B8', brad:'#2563EB', mim:'#DB2777', shared:'#7C3AED' };
+        return (
+          <div onClick={() => { setOpenDay(null); setNoteDraft(''); }}
+            style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.5)', zIndex:1000,
+              display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
+            <div onClick={e => e.stopPropagation()} className="fade-up"
+              style={{ background:'white', borderRadius:'20px', padding:'26px', maxWidth:'440px',
+                width:'100%', boxShadow:'0 24px 60px rgba(0,0,0,.25)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'18px' }}>
+                <div>
+                  <p style={{ fontSize:'11px', fontWeight:'700', color:'#94A3B8', letterSpacing:'1px', textTransform:'uppercase' }}>
+                    {MONTHS[openDay.month]} {openDay.year}
+                  </p>
+                  <h3 style={{ fontSize:'24px', fontWeight:'800', color:'#0F172A', letterSpacing:'-.3px' }}>
+                    {MONTHS[openDay.month].slice(0,3)} {openDay.d}
+                  </h3>
+                </div>
+                <button onClick={() => { setOpenDay(null); setNoteDraft(''); }}
+                  style={{ background:'#F1F5F9', border:'none', width:'30px', height:'30px', borderRadius:'50%', fontSize:'16px', cursor:'pointer', color:'#64748B' }}>×</button>
+              </div>
+
+              <p style={{ fontSize:'12px', fontWeight:'700', color:'#64748B', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.5px' }}>Scheduled</p>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'18px' }}>
+                <div style={{ flex:1, padding:'12px 16px', borderRadius:'12px',
+                  background: OWNER_COLOR[dayObj.owner] + '18', border:`1px solid ${OWNER_COLOR[dayObj.owner]}33`,
+                  color: OWNER_COLOR[dayObj.owner], fontSize:'14px', fontWeight:'700' }}>
+                  {OWNER_LABEL[dayObj.owner]}
+                </div>
+                <button onClick={() => cycleCustody(openDay.d)} style={{
+                  background:'#0F172A', color:'white', border:'none', borderRadius:'12px',
+                  padding:'12px 16px', fontSize:'12px', fontWeight:'700', cursor:'pointer', whiteSpace:'nowrap' }}>
+                  Cycle →
+                </button>
+              </div>
+
+              <p style={{ fontSize:'12px', fontWeight:'700', color:'#64748B', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.5px' }}>Notes for this day</p>
+              <textarea value={noteDraft} onChange={e => setNoteDraft(e.target.value)}
+                placeholder={`What happened on this day? E.g. "Skylah stayed with me because ${otherParentName} was sick" or "Dropped off at 5pm at the park"`}
+                rows={4}
+                style={{ width:'100%', padding:'12px 14px', borderRadius:'12px', border:'1.5px solid #E2E8F0',
+                  fontSize:'13px', fontFamily:'Inter,sans-serif', resize:'vertical', outline:'none', marginBottom:'16px',
+                  background:'#FAFBFC', lineHeight:'1.5' }}/>
+
+              <div style={{ display:'flex', gap:'8px' }}>
+                <button onClick={() => { setOpenDay(null); setNoteDraft(''); }}
+                  style={{ flex:1, padding:'11px', borderRadius:'11px', border:'1px solid #E2E8F0',
+                    background:'white', cursor:'pointer', fontSize:'13px', fontWeight:'500' }}>Cancel</button>
+                <button onClick={saveDayNote}
+                  style={{ flex:2, padding:'11px', borderRadius:'11px', border:'none',
+                    background:'linear-gradient(135deg,#6366F1,#7C3AED)', color:'white',
+                    cursor:'pointer', fontSize:'13px', fontWeight:'700' }}>Save note</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -1446,94 +1765,112 @@ function TabExpenses() {
 function TabMessages() {
   const mobile = useIsMobile();
   const [otherParentName] = useLocalStorage('lifeos_otherParentName', 'Other Parent');
-  const [msgs, setMsgs]     = useState(MSGS_SEED);
-  const [sel, setSel]       = useState(MSGS_SEED[0]);
-  const [reply, setReply]   = useState('');
-  const [thread, setThread] = useState(
-    MSGS_SEED[0] ? [{ from: MSGS_SEED[0].from || 'Co-parent', text: MSGS_SEED[0].text, mine:false }] : []
-  );
+  const [thread, setThread] = useLocalStorage('lifeos_cp_thread', []);
+  const [reply, setReply] = useState('');
+  const [sender, setSender] = useState('me'); // 'me' | 'them'
+  const bottomRef = useRef(null);
 
-  const sendReply = () => {
-    if (!reply.trim()) return;
-    setThread(t => [...t, { from:'You', text:reply, mine:true }]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:'smooth' }); }, [thread.length]);
+
+  const sendMsg = () => {
+    const text = reply.trim();
+    if (!text) return;
+    const now = new Date();
+    const time = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    const date = now.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+    setThread(prev => [...prev, { id: Date.now(), from: sender, text, time, date, ts: now.toISOString() }]);
     setReply('');
   };
 
-  const selectMsg = (m) => {
-    setSel(m);
-    setMsgs(prev => prev.map(x => x.id===m.id ? {...x,read:true} : x));
-    setThread([{ from:m.from, text:m.text, mine:false }]);
+  const deleteMsg = (id) => setThread(prev => prev.filter(m => m.id !== id));
+
+  const clearAll = () => {
+    if (window.confirm('Clear the entire co-parent chat log? This cannot be undone.')) setThread([]);
   };
 
   return (
     <div style={{ background:'white', borderRadius:'20px', overflow:'hidden',
       boxShadow:'0 1px 4px rgba(0,0,0,.06)', border:'1px solid #F1F5F9',
-      display:'grid', gridTemplateColumns: mobile ? '1fr' : '260px 1fr', height: mobile ? 'auto' : '460px' }}>
+      display:'flex', flexDirection:'column', height: mobile ? '520px' : '560px' }}>
 
-      {/* List */}
-      <div style={{ borderRight:'1px solid #F1F5F9', overflowY:'auto' }}>
-        <div style={{ padding:'16px 18px', borderBottom:'1px solid #F1F5F9' }}>
-          <p style={{ fontSize:'14px', fontWeight:'700', color:'#0F172A' }}>Co-parent Chat</p>
+      {/* Header */}
+      <div style={{ padding:'16px 22px', borderBottom:'1px solid #F1F5F9',
+        display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px' }}>
+        <div>
+          <p style={{ fontSize:'14px', fontWeight:'700', color:'#0F172A' }}>Co-parent Log — You &amp; {otherParentName}</p>
+          <p style={{ fontSize:'11px', color:'#94A3B8' }}>A shared record of what&apos;s been communicated. Tap a bubble to delete.</p>
         </div>
-        {msgs.map(m => (
-          <div key={m.id} onClick={() => selectMsg(m)} style={{
-            padding:'14px 18px', cursor:'pointer', borderBottom:'1px solid #FAFAFA',
-            background: sel?.id===m.id ? '#F5F3FF' : 'transparent', transition:'background .15s',
-          }}>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
-              <span style={{ fontSize:'13px', fontWeight: m.read?'500':'700', color:'#0F172A' }}>{m.from}</span>
-              <span style={{ fontSize:'10px', color:'#94A3B8' }}>{m.time}</span>
-            </div>
-            <p style={{ fontSize:'12px', color:'#64748B', overflow:'hidden', textOverflow:'ellipsis',
-              whiteSpace:'nowrap', maxWidth:'190px', fontWeight:m.read?'400':'500' }}>
-              {m.text}
-            </p>
-            {!m.read && <div style={{ width:'6px', height:'6px', borderRadius:'50%', background:'#7C3AED', marginTop:'6px' }}/>}
-          </div>
-        ))}
+        {thread.length > 0 && (
+          <button onClick={clearAll} style={{ background:'none', border:'1px solid #E2E8F0',
+            borderRadius:'8px', padding:'5px 10px', fontSize:'11px', color:'#64748B', cursor:'pointer' }}>
+            Clear log
+          </button>
+        )}
       </div>
 
       {/* Thread */}
-      <div style={{ display:'flex', flexDirection:'column' }}>
-        {sel ? (
-          <>
-            <div style={{ padding:'16px 22px', borderBottom:'1px solid #F1F5F9' }}>
-              <p style={{ fontSize:'14px', fontWeight:'700', color:'#0F172A' }}>{otherParentName}</p>
-              <p style={{ fontSize:'11px', color:'#94A3B8' }}>Co-parent · shared thread</p>
-            </div>
-            <div style={{ flex:1, padding:'20px 22px', overflowY:'auto', display:'flex', flexDirection:'column', gap:'12px' }}>
-              {thread.map((msg, i) => (
-                <div key={i} style={{ display:'flex', justifyContent: msg.mine ? 'flex-end' : 'flex-start' }}>
-                  <div style={{
-                    background: msg.mine ? 'linear-gradient(135deg,#6366F1,#7C3AED)' : '#F1F5F9',
-                    color: msg.mine ? 'white' : '#0F172A',
-                    borderRadius: msg.mine ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                    padding:'12px 16px', maxWidth:'78%', fontSize:'13px', lineHeight:'1.5',
-                  }}>
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ padding:'14px 18px', borderTop:'1px solid #F1F5F9', display:'flex', gap:'10px' }}>
-              <input value={reply} onChange={e=>setReply(e.target.value)}
-                placeholder={`Reply to ${otherParentName}…`}
-                onKeyDown={e=>e.key==='Enter' && sendReply()}
-                style={{ flex:1, padding:'10px 16px', borderRadius:'12px', border:'1.5px solid #E2E8F0',
-                fontSize:'13px', background:'#FAFAFA' }} />
-              <button onClick={sendReply} style={{
-                width:'40px', height:'40px', borderRadius:'12px', border:'none',
-                background:'linear-gradient(135deg,#6366F1,#7C3AED)',
-                display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}>
-                <IcoSend />
-              </button>
-            </div>
-          </>
-        ) : (
-          <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:'14px' }}>
-            Select a conversation
+      <div style={{ flex:1, padding:'20px 22px', overflowY:'auto', display:'flex',
+        flexDirection:'column', gap:'10px', background:'#FAFBFC' }}>
+        {thread.length === 0 && (
+          <div style={{ margin:'auto', textAlign:'center', color:'#94A3B8', fontSize:'13px', maxWidth:'320px' }}>
+            <div style={{ fontSize:'36px', marginBottom:'10px' }}>💬</div>
+            <p style={{ marginBottom:'6px', color:'#64748B', fontWeight:'600' }}>No messages yet</p>
+            <p>Log anything {otherParentName} tells you, or write yourself a note about what you told them. Use the toggle below to mark who said it.</p>
           </div>
         )}
+        {thread.map(msg => {
+          const mine = msg.from === 'me';
+          return (
+            <div key={msg.id} style={{ display:'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+              <div onClick={() => deleteMsg(msg.id)} title="Click to delete"
+                style={{
+                  background: mine ? 'linear-gradient(135deg,#6366F1,#7C3AED)' : 'white',
+                  color: mine ? 'white' : '#0F172A',
+                  borderRadius: mine ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                  padding:'10px 14px', maxWidth:'78%', fontSize:'13px', lineHeight:'1.5',
+                  border: mine ? 'none' : '1px solid #E2E8F0', cursor:'pointer',
+                  boxShadow:'0 1px 2px rgba(0,0,0,.04)',
+                }}>
+                <div style={{ fontSize:'10px', fontWeight:'700', opacity: mine ? 0.8 : 0.55,
+                  marginBottom:'3px', letterSpacing:'.3px', textTransform:'uppercase' }}>
+                  {mine ? 'You' : otherParentName} · {msg.date} {msg.time}
+                </div>
+                {msg.text}
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Composer */}
+      <div style={{ padding:'14px 18px', borderTop:'1px solid #F1F5F9', background:'white' }}>
+        <div style={{ display:'flex', gap:'6px', marginBottom:'10px' }}>
+          {[
+            { id:'me',   label:'You said' },
+            { id:'them', label:`${otherParentName} said` },
+          ].map(opt => (
+            <button key={opt.id} onClick={() => setSender(opt.id)} style={{
+              padding:'6px 12px', borderRadius:'8px', border:'none', cursor:'pointer',
+              fontSize:'11px', fontWeight:'600',
+              background: sender === opt.id ? '#0F172A' : '#F1F5F9',
+              color:      sender === opt.id ? 'white' : '#64748B',
+            }}>{opt.label}</button>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:'10px' }}>
+          <input value={reply} onChange={e => setReply(e.target.value)}
+            placeholder={sender === 'me' ? `What did you tell ${otherParentName}?` : `What did ${otherParentName} say?`}
+            onKeyDown={e => e.key === 'Enter' && sendMsg()}
+            style={{ flex:1, padding:'10px 16px', borderRadius:'12px', border:'1.5px solid #E2E8F0',
+            fontSize:'13px', background:'#FAFBFC' }} />
+          <button onClick={sendMsg} style={{
+            width:'40px', height:'40px', borderRadius:'12px', border:'none',
+            background:'linear-gradient(135deg,#6366F1,#7C3AED)',
+            display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}>
+            <IcoSend />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2556,7 +2893,7 @@ function MoneyTracker({ user, onBack }) {
   const savings      = totalIncome - totalSpend;
   const savingsRate  = totalIncome ? Math.round((savings/totalIncome)*100) : 0;
 
-  const txnCats   = ['All', ...new Set(TRANSACTIONS.map(t=>t.category))];
+  const txnCats   = ['All', ...new Set(txns.map(t=>t.category))];
   const filtTxns  = filter==='All' ? txns : txns.filter(t=>t.category===filter);
 
   const addSub = () => {
@@ -2569,7 +2906,7 @@ function MoneyTracker({ user, onBack }) {
   const addTxn = () => {
     if (!txnForm.desc || !txnForm.amount) return;
     const amt = parseFloat(txnForm.amount);
-    setTxns(prev => [{ id:Date.now(), ...txnForm, amount: txnForm.category==='Income'?amt:-Math.abs(amt), date:'Apr 1' }, ...prev]);
+    setTxns(prev => [{ id:Date.now(), ...txnForm, amount: txnForm.category==='Income'?amt:-Math.abs(amt), date:new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'}) }, ...prev]);
     setTxnForm({ desc:'', amount:'', category:'Groceries', emoji:'🛒' });
     setShowTxn(false);
   };
@@ -3768,11 +4105,28 @@ function ProjectsSection({ onBack }) {
   const [tab, setTab]         = useState('overview');
   const [projects, setProj]   = useLocalStorage('lifeos_projects', PROJECTS_SEED);
   const [invoices, setInv]    = useLocalStorage('lifeos_invoices', INVOICES_SEED);
+  const [clients, setClients] = useLocalStorage('lifeos_clients', CLIENTS_SEED);
   const [selProj, setSelProj] = useState(null);
   const [showProjForm, setShowProjForm] = useState(false);
   const [showInvForm,  setShowInvForm]  = useState(false);
+  const [showClientForm, setShowClientForm] = useState(false);
   const [projForm, setProjForm] = useState({ name:'', client:'', emoji:'🎯', value:'', due:'' });
   const [invForm,  setInvForm]  = useState({ client:'', amount:'', due:'' });
+  const [clientForm, setClientForm] = useState({ name:'', contact:'', role:'', email:'', phone:'', emoji:'🏢' });
+  const addClient = () => {
+    if (!clientForm.name) return;
+    setClients(prev => [...prev, {
+      id: Date.now(), name: clientForm.name, contact: clientForm.contact || clientForm.name,
+      role: clientForm.role || 'Client', email: clientForm.email || '', phone: clientForm.phone || '',
+      emoji: clientForm.emoji || '🏢', color: '#2563EB',
+      value: projects.filter(p => p.client === clientForm.name).reduce((s,p)=>s+(p.value||0),0),
+      projects: projects.filter(p => p.client === clientForm.name).length,
+      since: new Date().toLocaleDateString('en-US',{month:'short',year:'numeric'}),
+    }]);
+    setClientForm({ name:'', contact:'', role:'', email:'', phone:'', emoji:'🏢' });
+    setShowClientForm(false);
+  };
+  const deleteClient = (id) => setClients(prev => prev.filter(c => c.id !== id));
 
   const addProject = () => {
     if (!projForm.name || !projForm.client) return;
@@ -3807,7 +4161,7 @@ function ProjectsSection({ onBack }) {
       {/* Header */}
       <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'20px',flexWrap:'wrap'}}>
         <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:'6px',padding:'8px 14px',borderRadius:'10px',border:'1px solid #E2E8F0',background:'white',fontSize:'13px',fontWeight:'500',color:'#374151',cursor:'pointer'}}><IcoBack/>Dashboard</button>
-        <div style={{flex:1}}><h1 style={{fontSize: mobile ? '20px' : '26px',fontWeight:'800',color:'#0F172A',letterSpacing:'-.4px'}}>🎯 {mobile ? 'Projects' : 'Projects & Clients'}</h1>{!mobile && <p style={{fontSize:'13px',color:'#64748B'}}>{projects.filter(p=>p.status==='active').length} active projects · {CLIENTS_SEED.length} clients</p>}</div>
+        <div style={{flex:1}}><h1 style={{fontSize: mobile ? '20px' : '26px',fontWeight:'800',color:'#0F172A',letterSpacing:'-.4px'}}>🎯 {mobile ? 'Projects' : 'Projects & Clients'}</h1>{!mobile && <p style={{fontSize:'13px',color:'#64748B'}}>{projects.filter(p=>p.status==='active').length} active projects · {clients.length} client{clients.length!==1?'s':''}</p>}</div>
         <button onClick={()=>setShowProjForm(v=>!v)} style={{display:'flex',alignItems:'center',gap:'6px',background:'linear-gradient(135deg,#2563EB,#6366F1)',color:'white',border:'none',borderRadius:'11px',padding:'10px 18px',fontSize:'13px',fontWeight:'600',cursor:'pointer'}}><IcoPlus/>{mobile ? 'New' : 'New Project'}</button>
       </div>
       {/* Stats */}
@@ -3946,29 +4300,69 @@ function ProjectsSection({ onBack }) {
 
       {/* ── CLIENTS ── */}
       {tab==='clients' && (
-        <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'20px'}}>
-          {CLIENTS_SEED.map(c=>(
-            <div key={c.id} style={{background:'white',borderRadius:'20px',padding:'24px',boxShadow:'0 1px 4px rgba(0,0,0,.06)',border:'1px solid #F1F5F9',transition:'all .2s'}}
-              onMouseEnter={e=>e.currentTarget.style.borderColor=c.color+'55'}
-              onMouseLeave={e=>e.currentTarget.style.borderColor='#F1F5F9'}>
-              <div style={{display:'flex',alignItems:'center',gap:'14px',marginBottom:'18px'}}>
-                <div style={{width:'52px',height:'52px',borderRadius:'16px',background:c.color+'18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'26px',border:`2px solid ${c.color}33`}}>{c.emoji}</div>
-                <div><p style={{fontSize:'17px',fontWeight:'800',color:'#0F172A'}}>{c.name}</p><p style={{fontSize:'12px',color:'#64748B'}}>{c.contact} · {c.role}</p></div>
-              </div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'16px'}}>
-                {[{l:'Total value',v:`$${c.value.toLocaleString()}`,c:c.color},{l:'Projects',v:c.projects,c:'#374151'},{l:'Client since',v:c.since,c:'#374151'},{l:'Email',v:c.email.split('@')[0]+'…',c:'#2563EB'}].map((x,i)=>(
-                  <div key={i} style={{background:'#F8FAFC',borderRadius:'10px',padding:'10px 12px'}}>
-                    <p style={{fontSize:'11px',color:'#94A3B8',marginBottom:'3px'}}>{x.l}</p>
-                    <p style={{fontSize:'13px',fontWeight:'700',color:x.c}}>{x.v}</p>
-                  </div>
-                ))}
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'18px'}}>
+            <div>
+              <h3 style={{fontSize:'16px',fontWeight:'800',color:'#0F172A'}}>Clients</h3>
+              <p style={{fontSize:'12px',color:'#64748B'}}>{clients.length} client{clients.length!==1?'s':''} · {projects.length} project{projects.length!==1?'s':''} linked</p>
+            </div>
+            <button onClick={()=>setShowClientForm(v=>!v)} style={{display:'flex',alignItems:'center',gap:'5px',background:'linear-gradient(135deg,#2563EB,#6366F1)',color:'white',border:'none',borderRadius:'10px',padding:'9px 16px',fontSize:'13px',fontWeight:'600',cursor:'pointer'}}><IcoPlus/>Add Client</button>
+          </div>
+
+          {showClientForm && (
+            <div className="fade-up" style={{background:'white',borderRadius:'16px',padding:'18px',marginBottom:'18px',border:'1px solid #BFDBFE'}}>
+              <div style={{display:'grid',gridTemplateColumns: mobile ? '1fr' : '1fr 1fr 1fr',gap:'10px',marginBottom:'10px'}}>
+                <input value={clientForm.name}    onChange={e=>setClientForm(f=>({...f,name:e.target.value}))}    placeholder="Client name *" style={inp}/>
+                <input value={clientForm.contact} onChange={e=>setClientForm(f=>({...f,contact:e.target.value}))} placeholder="Main contact"  style={inp}/>
+                <input value={clientForm.role}    onChange={e=>setClientForm(f=>({...f,role:e.target.value}))}    placeholder="Role / title"  style={inp}/>
+                <input value={clientForm.email}   onChange={e=>setClientForm(f=>({...f,email:e.target.value}))}   placeholder="Email"         style={inp}/>
+                <input value={clientForm.phone}   onChange={e=>setClientForm(f=>({...f,phone:e.target.value}))}   placeholder="Phone"         style={inp}/>
+                <input value={clientForm.emoji}   onChange={e=>setClientForm(f=>({...f,emoji:e.target.value}))}   placeholder="Emoji (🏢)"    style={inp}/>
               </div>
               <div style={{display:'flex',gap:'8px'}}>
-                <a href={`mailto:${c.email}`} style={{flex:1,padding:'8px',borderRadius:'9px',background:c.color+'18',color:c.color,border:`1px solid ${c.color}33`,fontSize:'12px',fontWeight:'600',textAlign:'center',textDecoration:'none'}}>✉️ Email</a>
-                <a href={`tel:${c.phone}`}    style={{flex:1,padding:'8px',borderRadius:'9px',background:'#F1F5F9',color:'#374151',border:'1px solid #E2E8F0',fontSize:'12px',fontWeight:'600',textAlign:'center',textDecoration:'none'}}>📞 Call</a>
+                <button onClick={()=>setShowClientForm(false)} style={{flex:1,padding:'9px',borderRadius:'9px',border:'1px solid #E2E8F0',background:'white',cursor:'pointer',fontSize:'13px'}}>Cancel</button>
+                <button onClick={addClient} style={{flex:1,padding:'9px',borderRadius:'9px',border:'none',background:'#2563EB',color:'white',cursor:'pointer',fontSize:'13px',fontWeight:'600'}}>Save Client</button>
               </div>
             </div>
-          ))}
+          )}
+
+          {clients.length === 0 ? (
+            <div style={{background:'white',borderRadius:'20px',padding:'48px 24px',border:'1px solid #F1F5F9',boxShadow:'0 1px 4px rgba(0,0,0,.06)',textAlign:'center'}}>
+              <div style={{fontSize:'48px',marginBottom:'12px'}}>🏢</div>
+              <h3 style={{fontSize:'16px',fontWeight:'700',color:'#0F172A',marginBottom:'6px'}}>No clients yet</h3>
+              <p style={{fontSize:'13px',color:'#64748B',maxWidth:'340px',margin:'0 auto 18px'}}>Add a client to group your projects and track invoices against them.</p>
+              <button onClick={()=>setShowClientForm(true)} style={{display:'inline-flex',alignItems:'center',gap:'6px',background:'#EFF6FF',color:'#2563EB',border:'1px solid #BFDBFE',borderRadius:'10px',padding:'10px 18px',fontSize:'13px',fontWeight:'600',cursor:'pointer'}}><IcoPlus/>Add your first client</button>
+            </div>
+          ) : (
+            <div style={{display:'grid',gridTemplateColumns: mobile ? '1fr' : 'repeat(2,1fr)',gap:'20px'}}>
+              {clients.map(c=>{
+                const clientProjects = projects.filter(p => p.client === c.name);
+                const totalValue = clientProjects.reduce((s,p)=>s+(p.value||0),0);
+                return (
+                  <div key={c.id} style={{background:'white',borderRadius:'20px',padding:'24px',boxShadow:'0 1px 4px rgba(0,0,0,.06)',border:'1px solid #F1F5F9',transition:'all .2s',position:'relative'}}>
+                    <button onClick={()=>deleteClient(c.id)} title="Remove client" style={{position:'absolute',top:'14px',right:'14px',background:'none',border:'none',color:'#CBD5E1',cursor:'pointer',fontSize:'18px',lineHeight:1}}>×</button>
+                    <div style={{display:'flex',alignItems:'center',gap:'14px',marginBottom:'18px'}}>
+                      <div style={{width:'52px',height:'52px',borderRadius:'16px',background:(c.color||'#2563EB')+'18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'26px',border:`2px solid ${(c.color||'#2563EB')}33`}}>{c.emoji||'🏢'}</div>
+                      <div><p style={{fontSize:'17px',fontWeight:'800',color:'#0F172A'}}>{c.name}</p><p style={{fontSize:'12px',color:'#64748B'}}>{c.contact||c.name}{c.role?` · ${c.role}`:''}</p></div>
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'16px'}}>
+                      {[{l:'Total value',v:`$${totalValue.toLocaleString()}`,col:c.color||'#2563EB'},{l:'Projects',v:clientProjects.length,col:'#374151'},{l:'Client since',v:c.since||'—',col:'#374151'},{l:'Email',v:c.email?c.email.split('@')[0]+'…':'—',col:'#2563EB'}].map((x,i)=>(
+                        <div key={i} style={{background:'#F8FAFC',borderRadius:'10px',padding:'10px 12px'}}>
+                          <p style={{fontSize:'11px',color:'#94A3B8',marginBottom:'3px'}}>{x.l}</p>
+                          <p style={{fontSize:'13px',fontWeight:'700',color:x.col}}>{x.v}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:'flex',gap:'8px'}}>
+                      {c.email && <a href={`mailto:${c.email}`} style={{flex:1,padding:'8px',borderRadius:'9px',background:(c.color||'#2563EB')+'18',color:c.color||'#2563EB',border:`1px solid ${(c.color||'#2563EB')}33`,fontSize:'12px',fontWeight:'600',textAlign:'center',textDecoration:'none'}}>✉️ Email</a>}
+                      {c.phone && <a href={`tel:${c.phone}`} style={{flex:1,padding:'8px',borderRadius:'9px',background:'#F1F5F9',color:'#374151',border:'1px solid #E2E8F0',fontSize:'12px',fontWeight:'600',textAlign:'center',textDecoration:'none'}}>📞 Call</a>}
+                      {!c.email && !c.phone && <div style={{flex:1,padding:'8px',borderRadius:'9px',background:'#F8FAFC',color:'#94A3B8',border:'1px dashed #E2E8F0',fontSize:'11px',fontWeight:'500',textAlign:'center'}}>No contact info on file</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -4056,9 +4450,6 @@ function CalendarSection({ onBack }) {
       <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'20px',flexWrap:'wrap'}}>
         <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:'6px',padding:'8px 14px',borderRadius:'10px',border:'1px solid #E2E8F0',background:'white',fontSize:'13px',fontWeight:'500',color:'#374151',cursor:'pointer'}}><IcoBack/>Dashboard</button>
         <div style={{flex:1}}><h1 style={{fontSize: mobile ? '20px' : '26px',fontWeight:'800',color:'#0F172A',letterSpacing:'-.4px'}}>📅 Calendar</h1>{!mobile && <p style={{fontSize:'13px',color:'#64748B'}}>April 2026 · {calEvents.length} events</p>}</div>
-        {!mobile && <div style={{display:'flex',alignItems:'center',gap:'8px',background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:'10px',padding:'8px 14px'}}>
-          <span style={{fontSize:'14px'}}>🔗</span><span style={{fontSize:'12px',color:'#1D4ED8',fontWeight:'600'}}>Connect Google Calendar</span>
-        </div>}
         <button onClick={()=>setShowForm(v=>!v)} style={{display:'flex',alignItems:'center',gap:'6px',background:'linear-gradient(135deg,#0891B2,#06B6D4)',color:'white',border:'none',borderRadius:'11px',padding:'10px 18px',fontSize:'13px',fontWeight:'600',cursor:'pointer'}}><IcoPlus/>{mobile ? 'Add' : 'Add Event'}</button>
       </div>
 
@@ -4310,7 +4701,10 @@ function VoiceJournal({ onBack }) {
   const demoRef = useRef(null);
   const MOODS   = ['🤩','😊','😐','😔','⚡'];
   // Set sel to first entry after mount
-  useEffect(() => { if (!sel && entries.length > 0) setSel(entries[0]); }, [entries]);
+  useEffect(() => {
+    if (!sel && entries.length > 0) { setSel(entries[0]); return; }
+    if (sel && entries.length > 0 && !entries.find(e => e.id === sel.id)) setSel(entries[0]);
+  }, [entries, sel]);
 
   // Pick up any pending voice recording from the dashboard mic button
   useEffect(() => {
@@ -4503,7 +4897,7 @@ function AIAssistant({ onBack }) {
   };
 
   const getResponse = (q) => {
-    const key = Object.keys(AI_RESPONSES).find(k => q.toLowerCase().includes(k.split(' ')[1]||k));
+    const key = Object.keys(AI_RESPONSES).find(k => q.toLowerCase().includes(k.toLowerCase()));
     if (key) return AI_RESPONSES[key];
     return "I'm your LifeOS assistant. As you add your data (income, expenses, custody schedule, projects), I'll get smarter about your life. Try asking about your finances, custody schedule, or what's on your plate this week!";
   };
