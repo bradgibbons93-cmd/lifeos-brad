@@ -1195,7 +1195,7 @@ function TabSchedule({ events = EVENTS_SEED, onAddEvent }) {
                     onClick={() => isApr && cycleCustody(dayNum)}
                     title={isApr ? 'Click to change custody' : ''}
                     style={{ border: '2px solid transparent', cursor: isApr ? 'pointer' : 'default',
-                      flexDirection:'column', gap:'2px', aspectRatio:'unset', padding:'8px 4px', minHeight:'52px' }}>
+                      display:'flex', flexDirection:'column', gap:'2px', aspectRatio:'unset', padding:'8px 4px', minHeight:'52px' }}>
                     <span style={{ fontSize:'10px', fontWeight:'700', opacity:.6 }}>
                       {['Su','Mo','Tu','We','Th','Fr','Sa'][d.getDay()]}
                     </span>
@@ -2556,7 +2556,7 @@ function MoneyTracker({ user, onBack }) {
   const savings      = totalIncome - totalSpend;
   const savingsRate  = totalIncome ? Math.round((savings/totalIncome)*100) : 0;
 
-  const txnCats   = ['All', ...new Set(TRANSACTIONS.map(t=>t.category))];
+  const txnCats   = ['All', ...new Set(txns.map(t=>t.category))];
   const filtTxns  = filter==='All' ? txns : txns.filter(t=>t.category===filter);
 
   const addSub = () => {
@@ -2569,7 +2569,7 @@ function MoneyTracker({ user, onBack }) {
   const addTxn = () => {
     if (!txnForm.desc || !txnForm.amount) return;
     const amt = parseFloat(txnForm.amount);
-    setTxns(prev => [{ id:Date.now(), ...txnForm, amount: txnForm.category==='Income'?amt:-Math.abs(amt), date:'Apr 1' }, ...prev]);
+    setTxns(prev => [{ id:Date.now(), ...txnForm, amount: txnForm.category==='Income'?amt:-Math.abs(amt), date:new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'}) }, ...prev]);
     setTxnForm({ desc:'', amount:'', category:'Groceries', emoji:'🛒' });
     setShowTxn(false);
   };
@@ -4310,7 +4310,10 @@ function VoiceJournal({ onBack }) {
   const demoRef = useRef(null);
   const MOODS   = ['🤩','😊','😐','😔','⚡'];
   // Set sel to first entry after mount
-  useEffect(() => { if (!sel && entries.length > 0) setSel(entries[0]); }, [entries]);
+  useEffect(() => {
+    if (!sel && entries.length > 0) { setSel(entries[0]); return; }
+    if (sel && entries.length > 0 && !entries.find(e => e.id === sel.id)) setSel(entries[0]);
+  }, [entries, sel]);
 
   // Pick up any pending voice recording from the dashboard mic button
   useEffect(() => {
@@ -4503,7 +4506,7 @@ function AIAssistant({ onBack }) {
   };
 
   const getResponse = (q) => {
-    const key = Object.keys(AI_RESPONSES).find(k => q.toLowerCase().includes(k.split(' ')[1]||k));
+    const key = Object.keys(AI_RESPONSES).find(k => q.toLowerCase().includes(k.toLowerCase()));
     if (key) return AI_RESPONSES[key];
     return "I'm your LifeOS assistant. As you add your data (income, expenses, custody schedule, projects), I'll get smarter about your life. Try asking about your finances, custody schedule, or what's on your plate this week!";
   };
