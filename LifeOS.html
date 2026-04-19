@@ -4426,7 +4426,7 @@ function ProjectsSection({ onBack }) {
 function CalendarSection({ onBack }) {
   const mobile = useIsMobile();
   const [view,    setView]   = useState('month');
-  const [selDay,  setSelDay] = useState('2026-04-01');
+  const [selDay,  setSelDay] = useState((() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })());
   const [selEvt,  setSelEvt] = useState(null);
   const [calEvents, setCalEvents] = useLocalStorage('lifeos_cal_events', CAL_EVENTS);
   const [showForm, setShowForm] = useState(false);
@@ -4450,6 +4450,32 @@ function CalendarSection({ onBack }) {
       <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'20px',flexWrap:'wrap'}}>
         <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:'6px',padding:'8px 14px',borderRadius:'10px',border:'1px solid #E2E8F0',background:'white',fontSize:'13px',fontWeight:'500',color:'#374151',cursor:'pointer'}}><IcoBack/>Dashboard</button>
         <div style={{flex:1}}><h1 style={{fontSize: mobile ? '20px' : '26px',fontWeight:'800',color:'#0F172A',letterSpacing:'-.4px'}}>📅 Calendar</h1>{!mobile && <p style={{fontSize:'13px',color:'#64748B'}}>April 2026 · {calEvents.length} events</p>}</div>
+        <button onClick={()=>{
+          // Export all events to an ICS file (works with Google Calendar, Apple Cal, Outlook)
+          if (!calEvents.length) { alert('No events to export yet — add some first!'); return; }
+          const pad = n => String(n).padStart(2,'0');
+          const fmt = (dateStr, timeStr) => {
+            if (!dateStr) return '';
+            const d = new Date(dateStr + 'T' + (timeStr||'09:00') + ':00');
+            return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+          };
+          let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//LifeOS//EN\r\n';
+          calEvents.forEach(e => {
+            const start = fmt(e.date, e.time);
+            const end   = fmt(e.date, e.end || e.time);
+            if (!start) return;
+            ics += `BEGIN:VEVENT\r\nUID:${e.id}@lifeos\r\nDTSTART:${start}\r\nDTEND:${end||start}\r\nSUMMARY:${e.title}\r\nEND:VEVENT\r\n`;
+          });
+          ics += 'END:VCALENDAR';
+          const blob = new Blob([ics], { type:'text/calendar' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = 'lifeos-calendar.ics'; a.click();
+          URL.revokeObjectURL(url);
+          setTimeout(() => alert('📥 Downloaded lifeos-calendar.ics\n\nTo import:\n1. Open Google Calendar\n2. Settings → Import & export → Import\n3. Select the file'), 200);
+        }} style={{display:'flex',alignItems:'center',gap:'6px',background:'white',color:'#4285F4',border:'1.5px solid #4285F4',borderRadius:'11px',padding:'9px 14px',fontSize:'12px',fontWeight:'600',cursor:'pointer'}}>
+          📅 {mobile ? 'Google' : 'Export to Google Calendar'}
+        </button>
         <button onClick={()=>setShowForm(v=>!v)} style={{display:'flex',alignItems:'center',gap:'6px',background:'linear-gradient(135deg,#0891B2,#06B6D4)',color:'white',border:'none',borderRadius:'11px',padding:'10px 18px',fontSize:'13px',fontWeight:'600',cursor:'pointer'}}><IcoPlus/>{mobile ? 'Add' : 'Add Event'}</button>
       </div>
 
@@ -4495,7 +4521,7 @@ function CalendarSection({ onBack }) {
               const dateStr = `2026-04-${String(d).padStart(2,'0')}`;
               const evts = dayEvents(dateStr);
               const isSel = selDay===dateStr;
-              const isToday = d===1;
+              const todayD = new Date(); const isToday = dateStr === `${todayD.getFullYear()}-${String(todayD.getMonth()+1).padStart(2,'0')}-${String(todayD.getDate()).padStart(2,'0')}`;
               return (
                 <div key={d} onClick={()=>setSelDay(dateStr)} style={{borderRadius:'10px',padding:'6px 4px',cursor:'pointer',background:isSel?'#0F172A':isToday?'#EFF6FF':'transparent',border:`1.5px solid ${isSel?'#0F172A':isToday?'#BFDBFE':'transparent'}`,transition:'all .15s',minHeight: mobile ? '44px' : '60px'}}
                   onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background='#F8FAFC'}}
@@ -4524,7 +4550,7 @@ function CalendarSection({ onBack }) {
                 <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'4px',marginBottom:'4px'}}>
                   {days.map((d,i)=>{
                     const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-                    const isSel = selDay===ds; const isToday = ds==='2026-04-01';
+                    const isSel = selDay===ds; const _td=new Date(); const isToday = ds===`${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`;
                     return(
                       <div key={i} onClick={()=>setSelDay(ds)} style={{cursor:'pointer',textAlign:'center',padding:'8px 2px',borderRadius:'10px',background:isSel?'#0F172A':isToday?'#EFF6FF':'transparent',border:`1.5px solid ${isSel?'#0F172A':isToday?'#BFDBFE':'transparent'}`,transition:'all .15s'}}>
                         <div style={{fontSize:'10px',fontWeight:'700',color:isSel?'rgba(255,255,255,.7)':'#94A3B8',marginBottom:'2px'}}>{DAY_LABELS[i]}</div>
@@ -4888,18 +4914,117 @@ function AIAssistant({ onBack }) {
     "How many days do I have the kids this month?",
   ];
 
-  const AI_RESPONSES = {
-    "what's on my plate this week?": "Here's your week at a glance:\n\n**Kids:** Check your custody calendar for this week's schedule with Mim. Skylah's 6th birthday is April 17!\n\n**Work:** Check Projects & Clients for your active Celx Digital work.\n\n**Tip:** Add your tasks and events to LifeOS so I can give you better answers!",
-    "how much do i owe mim?":"Check the Co-parenting > Expenses tab for your shared expense balance with Mim. Add expenses there and I'll calculate who owes what.",
-    "when's my next client deadline?":"Add your Celx Digital projects and deadlines to Projects & Clients — then I can track them for you!",
-    "summarize my finances":"Head to Money to add your income sources and transactions. Once you've added your Centrelink payments and freelance income, I'll be able to give you a full snapshot.",
-    "how many days do i have the kids this month?":"Open Co-parenting and click on calendar days to set your custody schedule with Mim. You can toggle each day between Brad / Mim / Split.",
+  const readLS = (key, fallback) => {
+    try {
+      const rawUser = window.localStorage.getItem('lifeos_user');
+      let scopedKey = key;
+      if (rawUser && rawUser !== 'null') {
+        const u = JSON.parse(rawUser);
+        if (u && u.email) scopedKey = key + ':' + u.email;
+      }
+      const raw = window.localStorage.getItem(scopedKey);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch(_) { return fallback; }
   };
 
   const getResponse = (q) => {
-    const key = Object.keys(AI_RESPONSES).find(k => q.toLowerCase().includes(k.toLowerCase()));
-    if (key) return AI_RESPONSES[key];
-    return "I'm your LifeOS assistant. As you add your data (income, expenses, custody schedule, projects), I'll get smarter about your life. Try asking about your finances, custody schedule, or what's on your plate this week!";
+    const t = q.toLowerCase();
+    const tasks     = readLS('lifeos_tasks', []);
+    const events    = readLS('lifeos_cp_events', []);
+    const calEvents = readLS('lifeos_cal_events', []);
+    const custody   = readLS('lifeos_custody_apr2026', []);
+    const journal   = readLS('lifeos_journal', []);
+    const dayNotes  = readLS('lifeos_day_notes', {});
+    const thread    = readLS('lifeos_cp_thread', []);
+    const clients   = readLS('lifeos_clients', []);
+    const projects  = readLS('lifeos_projects', []);
+
+    // Tasks
+    if (/\b(task|todo|to do|plate|what.*this week|what.*today|what.*need)/.test(t)) {
+      const pending = tasks.filter(x=>!x.done);
+      const urgent = pending.filter(x=>x.urgency==='urgent');
+      if (!tasks.length) return "You haven't added any tasks yet. Tap '+ Add' on the dashboard Today's Tasks card to get started.";
+      if (!pending.length) return `Clear plate! All ${tasks.length} tasks are done ✅`;
+      let out = `You have **${pending.length} pending task${pending.length>1?'s':''}**${urgent.length?` (${urgent.length} urgent)`:''}:\n\n`;
+      pending.slice(0,8).forEach(x => { out += `• ${x.urgency==='urgent'?'🔴 ':''}${x.text}\n`; });
+      return out;
+    }
+
+    // Custody / kids days
+    if (/\b(kid|custody|lilly|skylah|days.*kids|how many day|schedule)/.test(t)) {
+      if (!custody.length) return "Your custody calendar is empty. Open Co-parenting → Schedule and tap days to set who has the kids.";
+      const brad = custody.filter(d=>d.owner==='brad').length;
+      const mim = custody.filter(d=>d.owner==='mim').length;
+      const split = custody.filter(d=>d.owner==='shared').length;
+      return `**April 2026 custody split:**\n\n• With you: ${brad} day${brad!==1?'s':''}\n• With Mim: ${mim} day${mim!==1?'s':''}\n• Split: ${split} day${split!==1?'s':''}\n\nTap any calendar day in Co-parenting → Schedule to change it or add a note.`;
+    }
+
+    // Expenses / money owed
+    if (/\b(owe|money|expense|owed|mim.*pay|pay.*mim|balance)/.test(t)) {
+      return "Open **Co-parenting → Expenses** to see the balance with Mim. Add expenses there and the balance updates automatically. I'll summarise once there's data.";
+    }
+
+    // Calendar / events
+    if (/\b(event|calendar|upcoming|coming up|deadline|appointment|birthday)/.test(t)) {
+      const combined = [...events, ...calEvents];
+      if (!combined.length) return "No events on your calendar. Add events via the Calendar card or Co-parenting → Add Event.";
+      const now = new Date();
+      const future = combined.filter(e => {
+        if (!e.date) return false;
+        const d = /^\d{4}-\d{2}-\d{2}$/.test(e.date) ? new Date(e.date+'T00:00:00') : null;
+        return d && d >= now;
+      }).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,6);
+      if (!future.length) return "No upcoming events — everything's in the past. Tap Add Event to schedule something.";
+      let out = `**Upcoming events:**\n\n`;
+      future.forEach(e => { out += `• ${e.date}${e.time?' '+e.time:''} — ${e.title}\n`; });
+      return out;
+    }
+
+    // Projects / clients
+    if (/\b(project|client|work|celx|acme|freelance|contract)/.test(t)) {
+      if (!projects.length && !clients.length) return "Nothing in Projects & Clients yet. Open that section to add your Celx Digital projects, clients, deadlines, and rates.";
+      let out = '';
+      if (clients.length) out += `**Clients (${clients.length}):** ${clients.map(c=>c.name).join(', ')}\n\n`;
+      if (projects.length) out += `**Projects (${projects.length}):**\n` + projects.slice(0,6).map(p=>`• ${p.name||p.title}${p.deadline?' — due '+p.deadline:''}`).join('\n');
+      return out;
+    }
+
+    // Finance / money summary
+    if (/\b(financ|money|budget|income|spending|subscription|save)/.test(t)) {
+      return "Open **Money** to see your subscriptions and transactions. Once you've added your Centrelink payments and freelance income I can break down monthly cashflow.";
+    }
+
+    // Journal
+    if (/\b(journal|voice|mood|feeling|reflect|diary)/.test(t)) {
+      if (!journal.length) return "No journal entries yet. Tap the mic on the dashboard and pick 'Voice Journal' to record.";
+      return `You've got **${journal.length} journal entr${journal.length===1?'y':'ies'}**. Most recent: "${journal[0].title||journal[0].transcript?.slice(0,60)}"`;
+    }
+
+    // Messages / co-parent
+    if (/\b(message|text|mim|coparent|co-parent|chat)/.test(t)) {
+      if (!thread.length) return "No messages in the co-parent log. Open Co-parenting → Messages to start a log.";
+      const last = thread[thread.length-1];
+      return `**Last message** (${last.date} ${last.time}) from ${last.from==='me'?'you':'Mim'}:\n\n"${last.text}"\n\n${thread.length} total messages logged.`;
+    }
+
+    // Day note lookup ("what happened saturday", etc)
+    if (/\b(note|what happened|reminder)/.test(t)) {
+      const notes = Object.entries(dayNotes);
+      if (!notes.length) return "You haven't added any day notes yet. Tap any day in the custody calendar to add one.";
+      let out = `**Your day notes (${notes.length}):**\n\n`;
+      notes.slice(-5).forEach(([k,v]) => { out += `• ${k}: ${v}\n`; });
+      return out;
+    }
+
+    // Summary / overview
+    if (/\b(summary|summarize|overview|recap|everything|status)/.test(t)) {
+      const pending = tasks.filter(x=>!x.done).length;
+      const bradDays = custody.filter(d=>d.owner==='brad').length;
+      return `**Quick snapshot:**\n\n• ${pending} pending task${pending!==1?'s':''}\n• ${bradDays} days with the kids this month\n• ${journal.length} journal entries\n• ${thread.length} co-parent messages logged\n• ${clients.length} clients, ${projects.length} projects\n\nAsk me about any of these for more detail.`;
+    }
+
+    // Fallback
+    return "I can tell you about your **tasks**, **custody schedule**, **upcoming events**, **projects**, **journal**, or **co-parent messages**. Try asking something like \"what's on my plate?\" or \"how many days with the kids?\"";
   };
 
   const send = (text) => {
