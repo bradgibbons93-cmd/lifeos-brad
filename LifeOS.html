@@ -123,15 +123,20 @@ const { useState, useEffect, useRef, useCallback, useMemo } = React;
    SEED DATA
 ═══════════════════════════════════════ */
 const CARDS_DEF = [
-  { id:'coparenting', label:'Co-parenting',        icon:'👨‍👧‍👦', color:'#7C3AED', bg:'#F5F3FF', desc:'Schedule & shared expenses' },
-  { id:'money',       label:'Money',               icon:'💳',    color:'#059669', bg:'#ECFDF5', desc:'Budget & subscriptions' },
-  { id:'projects',    label:'Projects & Clients',  icon:'🎯',    color:'#2563EB', bg:'#EFF6FF', desc:'Your projects' },
-  { id:'family',      label:'Family Cloud',        icon:'☁️',    color:'#D97706', bg:'#FFFBEB', desc:'Photos & documents' },
-  { id:'calendar',    label:'Calendar',            icon:'📅',    color:'#0891B2', bg:'#ECFEFF', desc:'Events & scheduling' },
-  { id:'messages',    label:'Unified Messages',    icon:'💬',    color:'#DB2777', bg:'#FDF2F8', desc:'All your messages' },
-  { id:'journal',     label:'Voice Journal',       icon:'🎙️',   color:'#4F46E5', bg:'#EEF2FF', desc:'Record your thoughts' },
-  { id:'ai',          label:'AI Assistant',        icon:'✨',    color:'#0D9488', bg:'#F0FDFA', desc:'Ask me anything' },
-  { id:'liveLocation',label:'Location',            icon:'📍',   color:'#6366F1', bg:'#EEF2FF', desc:'Live GPS — you & the kids' },
+  // Family
+  { id:'coparenting', label:'Co-parenting',       icon:'👨‍👧‍👦', color:'#7C3AED', bg:'#F5F3FF', desc:'Schedule & shared expenses',  category:'Family'       },
+  { id:'family',      label:'Family Cloud',       icon:'☁️',    color:'#D97706', bg:'#FFFBEB', desc:'Photos & documents',           category:'Family'       },
+  { id:'liveLocation',label:'Location',           icon:'📍',   color:'#6366F1', bg:'#EEF2FF', desc:'Live GPS — you & the kids',   category:'Family'       },
+  // Work & Money
+  { id:'projects',    label:'Projects & Clients', icon:'🎯',    color:'#2563EB', bg:'#EFF6FF', desc:'Your projects',                category:'Work & Money' },
+  { id:'money',       label:'Money',              icon:'💳',    color:'#059669', bg:'#ECFDF5', desc:'Budget & subscriptions',       category:'Work & Money' },
+  { id:'calendar',    label:'Calendar',           icon:'📅',    color:'#0891B2', bg:'#ECFEFF', desc:'Events & scheduling',          category:'Work & Money' },
+  // Connect
+  { id:'messages',    label:'Unified Messages',   icon:'💬',    color:'#DB2777', bg:'#FDF2F8', desc:'All your messages',            category:'Connect'      },
+  { id:'journal',     label:'Voice Journal',      icon:'🎙️',   color:'#4F46E5', bg:'#EEF2FF', desc:'Record your thoughts',         category:'Connect'      },
+  { id:'ai',          label:'AI Assistant',       icon:'✨',    color:'#0D9488', bg:'#F0FDFA', desc:'Ask me anything',              category:'Connect'      },
+  // Games
+  { id:'chopsticks',  label:'Chopsticks',         icon:'🥢',    color:'#DC2626', bg:'#FEF2F2', desc:'Classic finger game vs AI',    category:'Games'        },
 ];
 
 const EXPENSES_SEED = [];
@@ -1204,29 +1209,64 @@ function Dashboard({ user, onCard, onLogout }) {
         <TasksWidget onCard={onCard} />
 
         {/* ── Cards header ── */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'28px' }}>
           <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#0F172A' }}>Your Dashboard</h2>
-          <p style={{ fontSize:'12px', color:'#CBD5E1', fontWeight:'500' }}>✦ Hold & drag to rearrange</p>
+          <p style={{ fontSize:'12px', color:'#CBD5E1', fontWeight:'500' }}>✦ Drag to rearrange</p>
         </div>
 
-        {/* ── Cards grid ── */}
-        <div style={{ display:'grid', gridTemplateColumns: mobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: mobile ? '12px' : '20px', marginBottom:'40px' }}>
-          {cards.map((card, idx) => (
-            <DashCard
-              key={card.id}
-              card={card}
-              idx={idx}
-              draggingIdx={draggingIdx}
-              overIdx={overIdx}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-              onDragEnd={handleDragEnd}
-              onClick={() => onCard(card.id)}
-              preview={previews[card.id]}
-            />
-          ))}
-        </div>
+        {/* ── Categorised card sections ── */}
+        {(()=>{
+          const CATEGORY_ORDER = ['Family','Work & Money','Connect','Games'];
+          const CATEGORY_META  = {
+            'Family':      { icon:'🏠', color:'#7C3AED' },
+            'Work & Money':{ icon:'💼', color:'#2563EB' },
+            'Connect':     { icon:'💬', color:'#DB2777' },
+            'Games':       { icon:'🎮', color:'#DC2626' },
+          };
+          // Group cards (preserving drag-reorder within flat array)
+          const groups = {};
+          cards.forEach((card, idx) => {
+            const cat = card.category || 'Other';
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push({ card, idx });
+          });
+          const orderedKeys = [...CATEGORY_ORDER.filter(k=>groups[k]), ...Object.keys(groups).filter(k=>!CATEGORY_ORDER.includes(k))];
+          return orderedKeys.map(cat => {
+            const meta = CATEGORY_META[cat] || { icon:'📁', color:'#64748B' };
+            const catCards = groups[cat];
+            return (
+              <div key={cat} style={{ marginBottom: mobile ? '28px' : '36px' }}>
+                {/* Category header */}
+                <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'14px' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'7px' }}>
+                    <span style={{ fontSize:'14px' }}>{meta.icon}</span>
+                    <span style={{ fontSize:'12px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase', letterSpacing:'1.4px' }}>{cat}</span>
+                  </div>
+                  <div style={{ flex:1, height:'1px', background:'#F1F5F9' }}/>
+                </div>
+                {/* Cards in this category */}
+                <div style={{ display:'grid', gridTemplateColumns: mobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: mobile ? '12px' : '20px' }}>
+                  {catCards.map(({ card, idx }) => (
+                    <DashCard
+                      key={card.id}
+                      card={card}
+                      idx={idx}
+                      draggingIdx={draggingIdx}
+                      overIdx={overIdx}
+                      onDragStart={handleDragStart}
+                      onDragOver={handleDragOver}
+                      onDrop={handleDrop}
+                      onDragEnd={handleDragEnd}
+                      onClick={() => onCard(card.id)}
+                      preview={previews[card.id]}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          });
+        })()}
+        <div style={{ marginBottom:'40px' }}/>
 
         {/* ── Today strip ── */}
         <div className="fade-up" style={{ background:'white', borderRadius:'22px', padding: mobile ? '20px 16px' : '28px 36px',
@@ -5312,6 +5352,269 @@ function AppShell({ user, onLogout, onHome, children }) {
 }
 
 /* ═══════════════════════════════════════
+   CHOPSTICKS GAME
+═══════════════════════════════════════ */
+function ChopsticksGame({ onBack }) {
+  const mobile = useIsMobile();
+
+  const ICONS = ['✊','☝️','✌️','🤟','🖖'];
+
+  const [pH, setPH] = useState([1, 1]); // player hands [left, right]
+  const [aH, setAH] = useState([1, 1]); // ai hands
+  const [phase, setPhase]       = useState('select'); // select | target | split | ai | over
+  const [sel, setSel]           = useState(null);     // player selected hand index
+  const [winner, setWinner]     = useState(null);
+  const [msg, setMsg]           = useState('Tap one of your hands to select it, then tap an AI hand to attack');
+  const [splitOpts, setSplitOpts] = useState([]);
+
+  const dead = (n) => n === 0;
+  const atk  = (a, t) => { const r = a + t; return r >= 5 ? 0 : r; };
+
+  const checkWin = (p, a) => {
+    if (p.every(dead)) return 'ai';
+    if (a.every(dead)) return 'player';
+    return null;
+  };
+
+  const getSplits = (hands) => {
+    const total = hands[0] + hands[1];
+    const opts = [];
+    for (let l = 0; l <= Math.min(4, total); l++) {
+      const r = total - l;
+      if (r < 0 || r > 4) continue;
+      if (l === hands[0] && r === hands[1]) continue;
+      if (!opts.find(o => o[0]===l && o[1]===r)) opts.push([l, r]);
+    }
+    return opts;
+  };
+
+  const aiMove = (curPH, curAH) => {
+    let move = null;
+    // Prefer any attack that kills a player hand
+    for (let ai = 0; ai <= 1 && !move; ai++) {
+      if (dead(curAH[ai])) continue;
+      for (let pi = 0; pi <= 1; pi++) {
+        if (dead(curPH[pi])) continue;
+        if (atk(curAH[ai], curPH[pi]) === 0) { move = { type:'attack', ai, pi }; break; }
+      }
+    }
+    // Otherwise pick attack that pushes player hand highest
+    if (!move) {
+      let best = -1;
+      for (let ai = 0; ai <= 1; ai++) {
+        if (dead(curAH[ai])) continue;
+        for (let pi = 0; pi <= 1; pi++) {
+          if (dead(curPH[pi])) continue;
+          const res = atk(curAH[ai], curPH[pi]);
+          const score = res === 0 ? 5 : res; // killing is best
+          if (score > best) { best = score; move = { type:'attack', ai, pi }; }
+        }
+      }
+    }
+    // Fallback: split if a dead hand can be revived
+    if (!move || (dead(curAH[0]) !== dead(curAH[1]))) {
+      const opts = getSplits(curAH);
+      const revive = opts.find(o => o.every(v => v > 0));
+      if (revive && dead(curAH[0]) !== dead(curAH[1])) move = { type:'split', hands: revive };
+    }
+
+    if (!move) { setPhase('select'); setMsg('Tap one of your hands to select it, then tap an AI hand to attack'); return; }
+
+    if (move.type === 'attack') {
+      const newPH = [...curPH];
+      newPH[move.pi] = atk(curAH[move.ai], curPH[move.pi]);
+      setPH(newPH);
+      const w = checkWin(newPH, curAH);
+      if (w) { setWinner(w); setPhase('over'); setMsg(w==='player'?'🎉 You win! Well played!':'😤 AI wins! Try again?'); return; }
+    } else {
+      setAH(move.hands);
+    }
+    setPhase('select');
+    setMsg('Tap one of your hands to select it, then tap an AI hand to attack');
+  };
+
+  const onPlayerHand = (i) => {
+    if (phase !== 'select' && phase !== 'target') return;
+    if (dead(pH[i])) { setMsg("That hand is out — pick an alive hand"); return; }
+    setSel(i);
+    setPhase('target');
+    setMsg('Now tap an AI hand to attack it');
+  };
+
+  const onAiHand = (i) => {
+    if (phase !== 'target' || sel === null) return;
+    if (dead(aH[i])) { setMsg("That AI hand is already out — pick an alive one"); return; }
+    const newAH = [...aH];
+    newAH[i] = atk(pH[sel], aH[i]);
+    setAH(newAH);
+    setSel(null);
+    const w = checkWin(pH, newAH);
+    if (w) { setWinner(w); setPhase('over'); setMsg(w==='player'?'🎉 You win! Well played!':'😤 AI wins! Try again?'); return; }
+    setPhase('ai');
+    setMsg('AI is thinking…');
+    setTimeout(() => aiMove(pH, newAH), 900);
+  };
+
+  const onSplit = () => {
+    const opts = getSplits(pH);
+    if (!opts.length) { setMsg('No valid splits right now'); return; }
+    setSplitOpts(opts);
+    setSel(null);
+    setPhase('split');
+    setMsg('Choose how to redistribute your fingers');
+  };
+
+  const applySplit = (hands) => {
+    setPH(hands);
+    setSplitOpts([]);
+    setPhase('ai');
+    setMsg('AI is thinking…');
+    setTimeout(() => aiMove(hands, aH), 900);
+  };
+
+  const reset = () => {
+    setPH([1,1]); setAH([1,1]); setPhase('select'); setSel(null);
+    setWinner(null); setSplitOpts([]);
+    setMsg('Tap one of your hands to select it, then tap an AI hand to attack');
+  };
+
+  const Hand = ({ count, onClick, isSelected, clickable }) => {
+    const isDead = count === 0;
+    return (
+      <div onClick={clickable && !isDead ? onClick : undefined}
+        style={{
+          width: mobile ? '90px' : '110px', height: mobile ? '110px' : '130px',
+          background: isDead ? '#F8FAFC' : isSelected ? '#EEF2FF' : 'white',
+          border: `3px solid ${isDead ? '#E2E8F0' : isSelected ? '#6366F1' : '#E2E8F0'}`,
+          borderRadius: '22px', display:'flex', flexDirection:'column',
+          alignItems:'center', justifyContent:'center', gap:'8px',
+          cursor: (clickable && !isDead) ? 'pointer' : 'default',
+          transition: 'all .18s',
+          transform: isSelected ? 'scale(1.1)' : 'scale(1)',
+          boxShadow: isSelected ? '0 6px 24px rgba(99,102,241,.3)' : '0 1px 4px rgba(0,0,0,.06)',
+          opacity: isDead ? 0.35 : 1,
+        }}>
+        <span style={{ fontSize: mobile ? '34px' : '42px', lineHeight:1 }}>{ICONS[count] || '✊'}</span>
+        <span style={{ fontSize:'18px', fontWeight:'800', color: isDead ? '#94A3B8' : '#0F172A' }}>
+          {isDead ? '💀' : count}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ minHeight:'100vh', background:'#F7F8FA' }}>
+      <nav style={{ background:'white', borderBottom:'1px solid #F1F5F9', height:'64px',
+        padding: mobile ? '0 16px' : '0 36px', display:'flex', alignItems:'center', gap:'14px',
+        position:'sticky', top:0, zIndex:200, boxShadow:'0 1px 0 #F1F5F9' }}>
+        <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:'6px',
+          padding:'8px 14px', borderRadius:'10px', border:'1px solid #E2E8F0',
+          background:'white', fontSize:'13px', fontWeight:'500', color:'#374151', cursor:'pointer' }}>
+          <IcoBack /> Dashboard
+        </button>
+        <span style={{ fontSize:'18px', fontWeight:'800', color:'#0F172A' }}>🥢 Chopsticks</span>
+      </nav>
+
+      <div style={{ maxWidth:'500px', margin:'0 auto', padding: mobile ? '24px 16px' : '40px 24px' }}>
+
+        {/* Rules card */}
+        <div style={{ background:'white', borderRadius:'16px', padding:'16px 20px',
+          border:'1px solid #F1F5F9', marginBottom:'28px',
+          fontSize:'13px', color:'#64748B', lineHeight:'1.6' }}>
+          <strong style={{ color:'#0F172A' }}>How to play:</strong> Select a hand, then tap an opponent hand to add your count to theirs.
+          Any hand hitting <strong>5+</strong> is eliminated (💀). Use <em>Split</em> to redistribute your fingers. Last alive player wins!
+        </div>
+
+        {/* AI hands */}
+        <div style={{ marginBottom:'12px' }}>
+          <p style={{ fontSize:'11px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase',
+            letterSpacing:'1.2px', textAlign:'center', marginBottom:'12px' }}>🤖 AI</p>
+          <div style={{ display:'flex', gap:'20px', justifyContent:'center' }}>
+            <Hand count={aH[0]} onClick={() => onAiHand(0)} isSelected={false} clickable={phase==='target'} />
+            <Hand count={aH[1]} onClick={() => onAiHand(1)} isSelected={false} clickable={phase==='target'} />
+          </div>
+        </div>
+
+        {/* Status message */}
+        <div style={{ textAlign:'center', margin:'16px 0',
+          background: winner==='player' ? '#ECFDF5' : winner==='ai' ? '#FEF2F2' : phase==='ai' ? '#FFFBEB' : '#EEF2FF',
+          borderRadius:'14px', padding:'14px 20px',
+          fontSize:'14px', fontWeight:'600',
+          color: winner==='player' ? '#059669' : winner==='ai' ? '#DC2626' : phase==='ai' ? '#D97706' : '#4F46E5' }}>
+          {msg}
+        </div>
+
+        {/* Player hands */}
+        <div style={{ marginTop:'12px' }}>
+          <div style={{ display:'flex', gap:'20px', justifyContent:'center' }}>
+            <Hand count={pH[0]} onClick={() => onPlayerHand(0)} isSelected={sel===0} clickable={phase==='select'||phase==='target'} />
+            <Hand count={pH[1]} onClick={() => onPlayerHand(1)} isSelected={sel===1} clickable={phase==='select'||phase==='target'} />
+          </div>
+          <p style={{ fontSize:'11px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase',
+            letterSpacing:'1.2px', textAlign:'center', marginTop:'12px' }}>👤 You</p>
+        </div>
+
+        {/* Split options panel */}
+        {phase==='split' && splitOpts.length>0 && (
+          <div style={{ marginTop:'20px', background:'white', borderRadius:'16px',
+            padding:'16px', border:'1px solid #E2E8F0' }}>
+            <p style={{ fontSize:'13px', fontWeight:'600', color:'#374151', marginBottom:'12px' }}>Choose split:</p>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:'8px' }}>
+              {splitOpts.map((opt, i) => (
+                <button key={i} onClick={() => applySplit(opt)}
+                  style={{ padding:'8px 14px', borderRadius:'10px', border:'1.5px solid #6366F1',
+                    background:'#EEF2FF', color:'#4F46E5', fontSize:'13px', fontWeight:'700', cursor:'pointer' }}>
+                  {ICONS[opt[0]]} {opt[0]} | {opt[1]} {ICONS[opt[1]]}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { setSplitOpts([]); setPhase('select'); setMsg('Tap one of your hands to select it, then tap an AI hand to attack'); }}
+              style={{ marginTop:'10px', padding:'6px 12px', borderRadius:'8px', border:'1px solid #E2E8F0',
+                background:'white', fontSize:'12px', color:'#64748B', cursor:'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div style={{ display:'flex', gap:'10px', marginTop:'24px', justifyContent:'center' }}>
+          {phase==='select' && (
+            <button onClick={onSplit}
+              style={{ padding:'10px 22px', borderRadius:'12px', border:'1px solid #E2E8F0',
+                background:'white', fontSize:'14px', fontWeight:'600', color:'#374151', cursor:'pointer' }}>
+              ✂️ Split
+            </button>
+          )}
+          {phase==='target' && (
+            <button onClick={() => { setSel(null); setPhase('select'); setMsg('Tap one of your hands to select it, then tap an AI hand to attack'); }}
+              style={{ padding:'10px 22px', borderRadius:'12px', border:'1px solid #E2E8F0',
+                background:'white', fontSize:'14px', fontWeight:'600', color:'#374151', cursor:'pointer' }}>
+              Cancel
+            </button>
+          )}
+          {phase==='over' && (
+            <button onClick={reset}
+              style={{ padding:'12px 32px', borderRadius:'14px', border:'none',
+                background:'linear-gradient(135deg,#6366F1,#8B5CF6)',
+                color:'white', fontSize:'15px', fontWeight:'700', cursor:'pointer',
+                boxShadow:'0 4px 16px rgba(99,102,241,.35)' }}>
+              🔄 Play Again
+            </button>
+          )}
+        </div>
+
+        {/* Score legend */}
+        <div style={{ marginTop:'32px', display:'flex', justifyContent:'center', gap:'16px', flexWrap:'wrap' }}>
+          {['☝️ = 1','✌️ = 2','🤟 = 3','🖖 = 4','✊ = 💀'].map(s => (
+            <span key={s} style={{ fontSize:'12px', color:'#94A3B8', fontWeight:'500' }}>{s}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
    ROOT APP
 ═══════════════════════════════════════ */
 function App() {
@@ -5321,7 +5624,7 @@ function App() {
 
   const login  = (u)  => { setUser(u); setScreen('dashboard'); };
   const logout = ()   => { setUser(null); setScreen('dashboard'); setActive(null); };
-  const FULL_SCREENS = ['coparenting','myLocation','money','projects','calendar','messages','journal','ai','family','liveLocation'];
+  const FULL_SCREENS = ['coparenting','myLocation','money','projects','calendar','messages','journal','ai','family','liveLocation','chopsticks'];
   const goCard = (id) => {
     setActive(id);
     setScreen(FULL_SCREENS.includes(id) ? id : 'section');
@@ -5349,6 +5652,7 @@ function App() {
   if (screen==='ai')       return <AppShell user={user} onLogout={logout} onHome={back}><AIAssistant onBack={back}/></AppShell>;
   if (screen==='family')        return <AppShell user={user} onLogout={logout} onHome={back}><FamilyCloud onBack={back}/></AppShell>;
   if (screen==='liveLocation')  return <AppShell user={user} onLogout={logout} onHome={back}><LiveLocationTracker user={user} onBack={back}/></AppShell>;
+  if (screen==='chopsticks')    return <ChopsticksGame onBack={back} />;
   if (screen==='section') {
     const card = CARDS_DEF.find(c=>c.id===active);
     return (
